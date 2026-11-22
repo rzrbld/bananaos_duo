@@ -14,7 +14,7 @@ Alpha firmware for **Retroid Pocket Duo Lite (SM6125 / Adreno 610)**. Tested on 
 | Graphics | Mesa Freedreno GLES/KMS; Turnip Vulkan driver included; each emulator's selected renderer is documented in its recipe |
 | Game menu | Original BananaFront menu adapted to the wide top display; save/load, resume, brightness, restart and quit tested |
 | PortMaster | Vanilla installation with OS-managed paths/display/controller integration; application files and ports are not patched |
-| Audio | Speaker/headphone routes and physical volume controls implemented; headset output/loudness confirmed. Built-in microphone passed an acoustic capture test. Headset microphone remains silent; see AUDIO.md. |
+| Audio | Speaker/headphone routes and physical volume controls implemented; headset output/loudness confirmed. Built-in microphone passed an acoustic capture test. Headset microphone capture is user-confirmed after correcting its SoundWire mapping. The following output-regression correction still needs installed-firmware validation; see AUDIO.md. |
 
 ## Emulators
 
