@@ -76,6 +76,9 @@ class Update(unittest.TestCase):
         self.assertEqual((self.boot/'b/Image').read_text(),'kernel-0.1.0-alpha.26')
         recovery=(self.boot/'loader/entries/banana-recovery.conf').read_text();self.assertIn('root=PARTLABEL=banana-root-a ',recovery)
         (self.run/'slot').write_text('b\n');self.invoke('switch','a');self.assertEqual(self.default(),'a')
+        self.assertIn('root=PARTLABEL=banana-root-b ',(self.boot/'loader/entries/banana-recovery.conf').read_text())
+        self.invoke('switch','b');self.assertEqual(self.default(),'b')
+        self.assertIn('root=PARTLABEL=banana-root-a ',(self.boot/'loader/entries/banana-recovery.conf').read_text())
     def test_interrupted_write(self):
         p=self.package();self.invoke('apply',p,ok=False,DD_FAIL='1');self.assertEqual(self.default(),'a')
         self.assertFalse((self.boot/'b/Image').exists());self.invoke('switch','b',ok=False)

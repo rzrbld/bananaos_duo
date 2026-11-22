@@ -44,7 +44,9 @@ duolite_prepare() {
             cp "/boot$from" "$dest.new" && cmp "/boot$from" "$dest.new" && sync && mv -f "$dest.new" "$dest" || fail "can't preserve running $key"
         fi
     done
-    duolite_entry "$SLOT" > /boot/loader/entries/banana-recovery.conf.new || fail "can't prepare recovery"
+    recovery=${1:-$SLOT}
+    duolite_entry "$recovery" > /boot/loader/entries/banana-recovery.conf.new ||
+        duolite_entry "$SLOT" > /boot/loader/entries/banana-recovery.conf.new || fail "can't prepare recovery"
     sync
     mv -f /boot/loader/entries/banana-recovery.conf.new /boot/loader/entries/banana-recovery.conf || fail "can't retain recovery"
     boot_ro

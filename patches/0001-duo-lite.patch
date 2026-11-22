@@ -1046,7 +1046,7 @@ index 12f1aaed..c4ef6d8b 100755
  down)
      [ -f /run/banana/dropbear.pid ] && kill $(cat /run/banana/dropbear.pid) 2>/dev/null
 diff --git a/system/rootfs/usr/libexec/banana/update b/system/rootfs/usr/libexec/banana/update
-index 07f534f3..5190104f 100755
+index 07f534f3..fe84d22b 100755
 --- a/system/rootfs/usr/libexec/banana/update
 +++ b/system/rootfs/usr/libexec/banana/update
 @@ -50,6 +50,13 @@ BETA=$UPDATES/.beta
@@ -1088,8 +1088,8 @@ index 07f534f3..5190104f 100755
  switch)
      install_lock
      to=${2:-$(other $SLOT)}
-+    if [ "$BOARD" = duolite ]; then duolite_guard; duolite_prepare; fi
 +    case $to in a|b) ;; *) fail "invalid slot: $to" ;; esac
++    if [ "$BOARD" = duolite ]; then duolite_guard; duolite_prepare "$(other "$to")"; fi
      [ -f /boot/$to/Image ] || fail "slot $to holds no system"
      set_default $to
      status "switched $to"
