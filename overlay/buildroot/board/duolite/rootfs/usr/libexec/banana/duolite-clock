@@ -1,0 +1,62 @@
+#!/usr/bin/python3
+"""Keep a UTC offset on the SD card when the PMIC RTC cannot store one."""
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import time
+
+MIN_TIME = 1704067200  # 2024-01-01 UTC
+MAX_TIME = 4102444800  # 2100-01-01 UTC
+DATA = Path('/data/banana/clock-offset.json')
+RTC = Path('/sys/class/rtc/rtc0/since_epoch')
+
+def estimate(saved, raw):
+    if not isinstance(saved, dict):
+        return None
+    wall, previous = saved.get('wall'), saved.get('rtc')
+    if type(wall) is not int or type(previous) is not int:
+        return None
+    if not MIN_TIME <= wall < MAX_TIME or not 0 <= previous <= 0xffffffff:
+        return None
+    # A reset counter cannot advance the saved wall clock. Network sync can
+    # correct this conservative fallback without changing Android's RTC data.
+    elapsed = raw - previous if raw >= previous else 0
+    # Another OS may rewrite the hardware counter. Never interpret that as
+    # decades elapsed and advance the wall clock into the future.
+    if elapsed > 5 * 366 * 86400:
+        elapsed = 0
+    result = wall + elapsed
+    return result if MIN_TIME <= result < MAX_TIME else None
+
+def main(action):
+    try:
+        raw = int(RTC.read_text().strip())
+        if not 0 <= raw <= 0xffffffff:
+            return 1
+        now = int(time.time())
+        if action == 'save':
+            if not MIN_TIME <= now < MAX_TIME:
+                return 0  # Never replace good saved time with an unset clock.
+            DATA.parent.mkdir(parents=True, exist_ok=True)
+            tmp = DATA.with_suffix('.json.new')
+            with tmp.open('w') as f:
+                json.dump({'wall': now, 'rtc': raw}, f)
+                f.write('\n'); f.flush(); os.fsync(f.fileno())
+            tmp.replace(DATA)
+        elif action == 'restore':
+            if not DATA.exists():
+                return 0
+            target = estimate(json.loads(DATA.read_text()), raw)
+            if target is not None and now < target:
+                subprocess.run(['date', '-u', '-s', '@'+str(target)], check=True)
+        else:
+            return 2
+        return 0
+    except (OSError, ValueError, subprocess.CalledProcessError) as e:
+        print('Duo Lite clock:', e, file=sys.stderr)
+        return 1
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1] if len(sys.argv) == 2 else ''))

@@ -14,7 +14,7 @@ Alpha firmware for **Retroid Pocket Duo Lite (SM6125 / Adreno 610)**. Tested on 
 | Graphics | Mesa Freedreno GLES/KMS; Turnip Vulkan driver included; each emulator's selected renderer is documented in its recipe |
 | Game menu | Original BananaFront menu adapted to the wide top display; save/load, resume, brightness, restart and quit tested |
 | PortMaster | Vanilla installation with OS-managed paths/display/controller integration; application files and ports are not patched |
-| Audio | Speaker/headphone routes and physical volume controls implemented; headset output/loudness confirmed. Built-in microphone passed an acoustic capture test. Headset microphone remains silent; see AUDIO.md. |
+| Audio | Speaker/headphone routes and physical volume controls implemented; headset output/loudness confirmed. Built-in microphone passed an acoustic capture test. Headset microphone capture is user-confirmed after correcting its SoundWire mapping. Alpha31 speaker/headphone hotplug passed the user test; the headphone pop fix was user-confirmed on Alpha32. See AUDIO.md. |
 
 ## Emulators
 
@@ -31,3 +31,20 @@ The added Master System, CPC, MAME, PSP, Dreamcast, Wii and 3DS cores each rende
 **PlayStation:** PCSX-ReARMed uses a user-supplied BIOS from `bios/` when available; its HLE fallback has compatibility limits.
 
 Bring-up originally used ROCKNIX as a hardware reference, then moved to native BananaOS Buildroot. Release builds use the port's source recipes, not a repackaged ROCKNIX root filesystem.
+
+
+## Android reference measurements
+
+Read from this Duo Lite over ADB on 2026-11-22. These are reference measurements, not additional BananaOS performance presets.
+
+| Android mode | CPU governor | Little / big minimum (MHz) | KGSL maximum / minimum power-level index |
+| --- | --- | --- | --- |
+| Standard | schedutil | 1017.6 / 1056 | 3 / 4 |
+| Performance | schedutil | 1420.8 / 1401.6 | 2 / 3 |
+| High Performance | performance | 1612.8 / 1804.8 | 0 / 1 |
+
+CPU ceilings were 1804.8 / 2016 MHz. Android kept the GPU's `msm-adreno-tz` governor, hardware clock gating and an 80 ms idle timer. Its frequency table spans 320–950 MHz; the mode-specific KGSL power-level limits narrow that range. These vendor controls cannot be copied directly to the mainline MSM driver.
+
+Android fan PWM uses a 50,000 ns period. Quiet measured 8,000 ns duty (16%), about 4,800 RPM; Sport measured 15,000 ns (30%), about 7,440 RPM. Smart varied around 20% / 5,640 RPM during observation; its complete temperature curve has not been obtained. The existing Linux quiet ceiling remains in force.
+
+Android exposes `s2idle`, asynchronous suspend and sync-on-suspend, with a 20-second freezer timeout. CPU0 exposes WFI and a deeper `silver-c3` state. A comparative Android suspend/wake timing measurement is still outstanding.

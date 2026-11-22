@@ -867,7 +867,7 @@ index c4d4f4b5..0f89f8c6 100755
  # one at a time: the lid shut again within a second of a wake ran this pre beside the wake's post (still loading the
  # driver, wpa_supplicant not started yet), so pre found no wpa.pid, left Wi-Fi marked off, and the next wake didn't
 diff --git a/system/rootfs/etc/init.d/rcK b/system/rootfs/etc/init.d/rcK
-index 3db0e80c..707d3ac0 100755
+index 3db0e80c..cd104b6b 100755
 --- a/system/rootfs/etc/init.d/rcK
 +++ b/system/rootfs/etc/init.d/rcK
 @@ -4,6 +4,15 @@
@@ -886,7 +886,7 @@ index 3db0e80c..707d3ac0 100755
  # the game's process group first (banana-ui starts each game in its own session; a poweroff over SSH reaches
  # BananaDS, SuperDrastic and the ports too, and they write their saves), then the menu; waited for until they are
  # gone, up to 3 s, instead of a second whatever happened
-@@ -24,9 +33,13 @@ done
+@@ -24,10 +33,15 @@ done
  # the unmount, the last half-minute of a recording was lost at every restart)
  killall bananad 2>/dev/null
  for i in 1 2 3 4 5 6 7 8 9 10; do pidof bananad >/dev/null || break; sleep 0.1; done
@@ -901,9 +901,11 @@ index 3db0e80c..707d3ac0 100755
 +    /usr/libexec/banana/wifi down 2>/dev/null
 +fi
  /usr/libexec/banana/bluetooth down 2>/dev/null   # (its pairings saved on the card)
++[ ! -x /usr/libexec/banana/duolite-clock ] || /usr/libexec/banana/duolite-clock save
  hwclock -w 2>/dev/null
  # the panels' brightness as it is now, for bananad to restore at the next boot ("<top> <bottom>" in thousandths): only
-@@ -49,7 +62,18 @@ else
+ # the settings rows, F + volume and the DS emulators' menus wrote the file, so a level set any other way (or set a moment
+@@ -49,7 +63,18 @@ else
      [ -n "$t" ] || t=$b; [ -n "$b" ] || b=$t
      [ -n "$t" ] && [ "$t $b" != "$old_t $old_b" ] && echo "$t $b" > /data/banana/backlight
  fi
@@ -1313,7 +1315,7 @@ index 89a5030b..d3676f91 100755
  # bluez-alsa's software volume when they have none), in straight steps: the headphones apply their own curve
  if [ "$CARD" = bluealsa ]; then
 diff --git a/system/rootfs/usr/libexec/banana/wifi b/system/rootfs/usr/libexec/banana/wifi
-index 7bd0a08c..096962b8 100755
+index 7bd0a08c..d02c735a 100755
 --- a/system/rootfs/usr/libexec/banana/wifi
 +++ b/system/rootfs/usr/libexec/banana/wifi
 @@ -25,8 +25,13 @@ running() { $W ping 2>/dev/null | grep -q PONG; }	# whether one answers, pid fil
@@ -1340,15 +1342,26 @@ index 7bd0a08c..096962b8 100755
      ip link set wlan0 up
      wpa_supplicant -B -i wlan0 -c /run/banana/wpa.conf -P /run/banana/wpa.pid 9>&- || return 1
      $W -a /usr/libexec/banana/wifi -B -P /run/banana/wpa_cli.pid 9>&-
-@@ -104,7 +110,7 @@ wlan0)
+@@ -94,7 +100,7 @@ test)
+     if [ ! -f /run/banana/time-synced ] && [ $net = ok ]; then
+         for i in 1 2 3 4 5 6 7 8 9 10; do pidof ntpd >/dev/null || break; sleep 1; done
+         [ -f /run/banana/time-synced ] ||
+-            { timeout 12 ntpd -q -n -p pool.ntp.org >/dev/null 2>&1 && { hwclock -w 2>/dev/null; date +%s > /run/banana/time-synced; }; }
++            { timeout 12 ntpd -q -n -p pool.ntp.org >/dev/null 2>&1 && { hwclock -w 2>/dev/null; [ ! -x /usr/libexec/banana/duolite-clock ] || /usr/libexec/banana/duolite-clock save; date +%s > /run/banana/time-synced; }; }
+     fi
+     [ -f /run/banana/time-synced ] && echo "time ok" || echo "time fail"
+     ;;
+@@ -104,8 +110,8 @@ wlan0)
      CONNECTED)
          stop /run/banana/udhcpc.pid
          # (time-synced: the clock came from the network this boot, for wifi test)
 -        udhcpc -b -t 5 -i wlan0 -p /run/banana/udhcpc.pid -s /usr/share/udhcpc/default.script >/dev/null 2>&1 &&
+-            { ntpd -q -n -p pool.ntp.org >/dev/null 2>&1 && { hwclock -w 2>/dev/null; date +%s > /run/banana/time-synced; }; } &
 +        udhcpc -b -t 5 -i wlan0 -p /run/banana/udhcpc.pid -s /usr/share/udhcpc/default.script >"${BANANA_WIFI_DHCP_LOG:-/dev/null}" 2>&1 &&
-             { ntpd -q -n -p pool.ntp.org >/dev/null 2>&1 && { hwclock -w 2>/dev/null; date +%s > /run/banana/time-synced; }; } &
++            { ntpd -q -n -p pool.ntp.org >/dev/null 2>&1 && { hwclock -w 2>/dev/null; [ ! -x /usr/libexec/banana/duolite-clock ] || /usr/libexec/banana/duolite-clock save; date +%s > /run/banana/time-synced; }; } &
          # Settings > System > Updates > Update check: Daily asks GitHub for a newer version, once a day at most (the update
          # script reads the setting itself; nothing is downloaded). After the clock had its chance: TLS needs it
+         ( sleep 20; /usr/libexec/banana/update check --daily ) >/dev/null 2>&1 &
 diff --git a/system/rootfs/usr/share/banana/portmaster/mod_BananaOS.txt b/system/rootfs/usr/share/banana/portmaster/mod_BananaOS.txt
 index 15acf19b..6907046b 100644
 --- a/system/rootfs/usr/share/banana/portmaster/mod_BananaOS.txt
@@ -2391,7 +2404,7 @@ index 65a057ed..e22517f9 100644
  		logf("shutdown animation");
  		playOutro(disp, be, o, variant, sound);
 diff --git a/ui/src/settings.cpp b/ui/src/settings.cpp
-index ee1ceffb..05ab422e 100644
+index ee1ceffb..e233dae4 100644
 --- a/ui/src/settings.cpp
 +++ b/ui/src/settings.cpp
 @@ -409,7 +409,9 @@ namespace banana
@@ -2822,7 +2835,7 @@ index ee1ceffb..05ab422e 100644
 +        icon("music", 50, 56, 3);
 +        text("Display & sound", true, 17, 170, 62, p.muted, true, 1.4f);
 +        text("Microphone test", true, 30, 170, 88, p.ink);
-+        text("Input level", true, 20, 50, 180, p.ink);
++        text(micTest.inputName(), true, 20, 50, 180, p.ink);
 +        meter(50, 220, topWidth() - 100, micTest.level() / 100.0);
 +        wrapped(micTest.status(), 20, 50, 270, topWidth() - 100, 2, p.accent);
 +        wrapped("Speak near the microphone. A connected headset uses its own mic.", 17, 50, 360, topWidth() - 100, 2, p.muted);
@@ -3313,6 +3326,46 @@ index 746add49..211cbbde 100644
  		std::vector<uint32_t> scr[2];
  		Damage dmg[2];
  		std::vector<Clip> clips;
+diff --git a/ui/src/sound.cpp b/ui/src/sound.cpp
+index 48d40af4..34dace5d 100644
+--- a/ui/src/sound.cpp
++++ b/ui/src/sound.cpp
+@@ -210,7 +210,7 @@ namespace banana
+ 				if (!pcm)
+ 				{
+ 					if (long long r = routeId(); r != routeLoaded) { snd_config_update_free_global(); routeLoaded = r; }
+-					if (snd_pcm_open(&pcm, "default", SND_PCM_STREAM_PLAYBACK, 0) < 0) { pcm = nullptr; continue; }
++					if (snd_pcm_open(&pcm, "default", SND_PCM_STREAM_PLAYBACK, SND_PCM_NONBLOCK) < 0) { pcm = nullptr; continue; }
+ 					if (snd_pcm_set_params(pcm, SND_PCM_FORMAT_S16_LE, SND_PCM_ACCESS_RW_INTERLEAVED, c.channels, c.rate, 1, 30000) < 0)
+ 					{
+ 						snd_pcm_close(pcm); pcm = nullptr; continue;
+@@ -258,11 +258,24 @@ namespace banana
+ 				if (!cur && !under) { lastSound = now; if (closeAfter || closing) tail = TAIL; }
+ 			}
+ 			else if (tail > 0) tail--;
++			auto progress = std::chrono::steady_clock::now();
+ 			while (frames > 0)
+ 			{
+-				snd_pcm_sframes_t w = snd_pcm_writei(pcm, p, (snd_pcm_uframes_t)frames);	// blocks while the buffer is full
++				snd_pcm_sframes_t w = snd_pcm_writei(pcm, p, (snd_pcm_uframes_t)frames);
++				if (w == -EAGAIN || w == 0)
++				{
++					bool stopping;
++					{ std::lock_guard<std::mutex> l(m); stopping = stop; }
++					// A stalled DSP stream must not trap this worker in writei:
++					// it still has to release the PCM when the jack or app changes.
++					if (stopping || routeId() != routeLoaded ||
++					    std::chrono::steady_clock::now() - progress > std::chrono::milliseconds(500))
++					{ closeDev(); cur = under = nullptr; break; }
++					snd_pcm_wait(pcm, 20);
++					continue;
++				}
+ 				if (w < 0) { if (snd_pcm_recover(pcm, (int)w, 1) < 0) { closeDev(); cur = under = nullptr; break; } continue; }
+-				frames -= w; p += w * openCh;
++				frames -= w; p += w * openCh; progress = std::chrono::steady_clock::now();
+ 			}
+ 		}
+ 		closeDev();
 diff --git a/ui/src/splash.cpp b/ui/src/splash.cpp
 index 220d935a..4cf9df4f 100644
 --- a/ui/src/splash.cpp

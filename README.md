@@ -18,9 +18,9 @@ SSH is enabled by default: user `root`, password `rocknix`. Its address is shown
 
 Open **Settings → System → Updates**. Leave **Test versions** enabled to see alpha releases from this repository. Downloading and installing are separate actions. Installation writes the inactive SD root slot, verifies its contents and only then changes the OpenABL boot entry. Restart to use the new version.
 
-The running system remains available as **Previous version**. OpenABL also has a recovery entry. Offline updates use the same `banana-duolite-<version>.update.tar` package in `banana/updates` on the card. See [UPDATES.md](docs/UPDATES.md).
+The running system remains available as **Previous version**. OpenABL also has a recovery entry. Offline updates use the same `banana-duolite-<version>.update.tar` package in `banana/updates` on the card. See [UPDATES.md](docs/UPDATES.md), including the read-only installed-firmware hash check.
 
-Port versions, such as `0.1.0-alpha.26`, are independent of the pinned upstream BananaOS version. The top bar shows our Duo Lite alpha number.
+Port versions, such as `0.1.0-alpha.32`, are independent of the pinned upstream BananaOS version. The top bar shows our Duo Lite alpha number.
 
 ## Games
 

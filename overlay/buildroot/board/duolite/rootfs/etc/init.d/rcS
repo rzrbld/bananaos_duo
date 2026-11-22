@@ -81,6 +81,7 @@ if [ -f /run/banana/boot-debug/loader/entries/banana.conf ]; then
 else
     mount -t vfat -o ro,noatime "${DISK}p1" /boot
 fi
+/usr/libexec/banana/duolite-clock restore
 /usr/libexec/banana/duolite-import-network
 /usr/libexec/banana/duolite-log-watch >/run/banana/log-watch.log 2>&1 &
 # Bring-up default: root / rocknix, public keys optional. An explicit user

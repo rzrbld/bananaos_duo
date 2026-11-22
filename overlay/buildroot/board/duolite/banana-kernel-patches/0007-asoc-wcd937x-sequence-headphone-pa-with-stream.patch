@@ -1,0 +1,254 @@
+Subject: ASoC: wcd937x: sequence headphone amplifiers within the SoundWire stream
+
+Adapt Jonathan Marek's WCD938x pop/click fix to WCD9370/WCD9375. Enable the
+headphone PA only after its supply settle delay, while SoundWire is enabled,
+and disable it before hw_free tears down that stream. Preserve the capture
+path and guard repeated mute callbacks against duplicate IRQ enable/disable.
+
+Reference: https://lkml.iu.edu/hypermail/linux/kernel/2511.3/00064.html
+Original idea: Jonathan Marek <jonathan@marek.ca>
+Adaptation for BananaOS Duo Lite; user listening test passed on Alpha32.
+
+--- a/sound/soc/codecs/wcd937x.c
++++ b/sound/soc/codecs/wcd937x.c
+@@ -101,6 +101,10 @@
+ 	int aux_pdm_wd_int;
+ 	bool comp1_enable;
+ 	bool comp2_enable;
++	bool hphl_enable;
++	bool hphr_enable;
++	bool hphl_pa_enabled;
++	bool hphr_pa_enabled;
+ 
+ 	struct gpio_desc *us_euro_gpio;
+ 	struct gpio_desc *reset_gpio;
+@@ -344,6 +348,7 @@
+ 
+ 	switch (event) {
+ 	case SND_SOC_DAPM_PRE_PMU:
++		wcd937x->hphl_enable = true;
+ 		wcd937x_rx_clk_enable(component);
+ 		snd_soc_component_update_bits(component,
+ 					      WCD937X_DIGITAL_CDC_DIG_CLK_CTL,
+@@ -400,6 +405,7 @@
+ 					      BIT(1), 0x00);
+ 		break;
+ 	case SND_SOC_DAPM_POST_PMD:
++		wcd937x->hphl_enable = false;
+ 		snd_soc_component_update_bits(component,
+ 					      WCD937X_HPH_NEW_INT_RDAC_HD2_CTL_L,
+ 					      0x0f, BIT(0));
+@@ -419,6 +425,7 @@
+ 
+ 	switch (event) {
+ 	case SND_SOC_DAPM_PRE_PMU:
++		wcd937x->hphr_enable = true;
+ 		wcd937x_rx_clk_enable(component);
+ 		snd_soc_component_update_bits(component,
+ 					      WCD937X_DIGITAL_CDC_DIG_CLK_CTL, BIT(1), BIT(1));
+@@ -469,6 +476,7 @@
+ 					      BIT(1), 0x00);
+ 		break;
+ 	case SND_SOC_DAPM_POST_PMD:
++		wcd937x->hphr_enable = false;
+ 		snd_soc_component_update_bits(component,
+ 					      WCD937X_HPH_NEW_INT_RDAC_HD2_CTL_R,
+ 					      0x0f, BIT(0));
+@@ -575,16 +583,13 @@
+ 	return 0;
+ }
+ 
+-static int wcd937x_codec_enable_hphr_pa(struct snd_soc_dapm_widget *w,
+-					struct snd_kcontrol *kcontrol,
+-					int event)
+-{
+-	struct snd_soc_component *component = snd_soc_dapm_to_component(w->dapm);
++static void wcd937x_codec_enable_hphr_pa(struct snd_soc_component *component,
++					    bool enable)
++{
+ 	struct wcd937x_priv *wcd937x = snd_soc_component_get_drvdata(component);
+ 	int hph_mode = wcd937x->hph_mode;
+ 
+-	switch (event) {
+-	case SND_SOC_DAPM_PRE_PMU:
++	if (enable) {
+ 		wcd_clsh_ctrl_set_state(wcd937x->clsh_info,
+ 					WCD_CLSH_EVENT_PRE_DAC,
+ 					WCD_CLSH_STATE_HPHR,
+@@ -596,8 +601,7 @@
+ 		snd_soc_component_update_bits(component,
+ 					      WCD937X_DIGITAL_PDM_WD_CTL1,
+ 					      0x07, 0x03);
+-		break;
+-	case SND_SOC_DAPM_POST_PMU:
++
+ 		if (test_bit(HPH_PA_DELAY, &wcd937x->status_mask)) {
+ 			if (wcd937x->comp2_enable)
+ 				usleep_range(7000, 7100);
+@@ -613,14 +617,15 @@
+ 			snd_soc_component_update_bits(component,
+ 						      WCD937X_ANA_RX_SUPPLIES,
+ 						      BIT(1), BIT(1));
++		snd_soc_component_update_bits(component, WCD937X_ANA_HPH,
++					      BIT(6), BIT(6));
+ 		enable_irq(wcd937x->hphr_pdm_wd_int);
+-		break;
+-	case SND_SOC_DAPM_PRE_PMD:
++	} else {
+ 		disable_irq_nosync(wcd937x->hphr_pdm_wd_int);
+ 		set_bit(HPH_PA_DELAY, &wcd937x->status_mask);
+ 		wcd_mbhc_event_notify(wcd937x->wcd_mbhc, WCD_EVENT_PRE_HPHR_PA_OFF);
+-		break;
+-	case SND_SOC_DAPM_POST_PMD:
++		snd_soc_component_update_bits(component, WCD937X_ANA_HPH,
++					      BIT(6), 0);
+ 		if (test_bit(HPH_PA_DELAY, &wcd937x->status_mask)) {
+ 			if (wcd937x->comp2_enable)
+ 				usleep_range(7000, 7100);
+@@ -638,22 +643,16 @@
+ 					WCD_CLSH_EVENT_POST_PA,
+ 					WCD_CLSH_STATE_HPHR,
+ 					hph_mode);
+-		break;
+-	}
+-
+-	return 0;
+-}
+-
+-static int wcd937x_codec_enable_hphl_pa(struct snd_soc_dapm_widget *w,
+-					struct snd_kcontrol *kcontrol,
+-					int event)
+-{
+-	struct snd_soc_component *component = snd_soc_dapm_to_component(w->dapm);
++	}
++}
++
++static void wcd937x_codec_enable_hphl_pa(struct snd_soc_component *component,
++					    bool enable)
++{
+ 	struct wcd937x_priv *wcd937x = snd_soc_component_get_drvdata(component);
+ 	int hph_mode = wcd937x->hph_mode;
+ 
+-	switch (event) {
+-	case SND_SOC_DAPM_PRE_PMU:
++	if (enable) {
+ 		wcd_clsh_ctrl_set_state(wcd937x->clsh_info,
+ 					WCD_CLSH_EVENT_PRE_DAC,
+ 					WCD_CLSH_STATE_HPHL,
+@@ -664,8 +663,7 @@
+ 		set_bit(HPH_PA_DELAY, &wcd937x->status_mask);
+ 		snd_soc_component_update_bits(component,
+ 					      WCD937X_DIGITAL_PDM_WD_CTL0, 0x07, 0x03);
+-		break;
+-	case SND_SOC_DAPM_POST_PMU:
++
+ 		if (test_bit(HPH_PA_DELAY, &wcd937x->status_mask)) {
+ 			if (!wcd937x->comp1_enable)
+ 				usleep_range(20000, 20100);
+@@ -681,14 +679,15 @@
+ 			snd_soc_component_update_bits(component,
+ 						      WCD937X_ANA_RX_SUPPLIES,
+ 						      BIT(1), BIT(1));
++		snd_soc_component_update_bits(component, WCD937X_ANA_HPH,
++					      BIT(7), BIT(7));
+ 		enable_irq(wcd937x->hphl_pdm_wd_int);
+-		break;
+-	case SND_SOC_DAPM_PRE_PMD:
++	} else {
+ 		disable_irq_nosync(wcd937x->hphl_pdm_wd_int);
+ 		set_bit(HPH_PA_DELAY, &wcd937x->status_mask);
+ 		wcd_mbhc_event_notify(wcd937x->wcd_mbhc, WCD_EVENT_PRE_HPHL_PA_OFF);
+-		break;
+-	case SND_SOC_DAPM_POST_PMD:
++		snd_soc_component_update_bits(component, WCD937X_ANA_HPH,
++					      BIT(7), 0);
+ 		if (test_bit(HPH_PA_DELAY, &wcd937x->status_mask)) {
+ 			if (!wcd937x->comp1_enable)
+ 				usleep_range(20000, 20100);
+@@ -706,10 +705,7 @@
+ 					WCD_CLSH_EVENT_POST_PA,
+ 					WCD_CLSH_STATE_HPHL,
+ 					hph_mode);
+-		break;
+-	}
+-
+-	return 0;
++	}
+ }
+ 
+ static int wcd937x_codec_enable_aux_pa(struct snd_soc_dapm_widget *w,
+@@ -2227,14 +2223,7 @@
+ 			   wcd937x_codec_enable_aux_pa,
+ 			   SND_SOC_DAPM_PRE_PMU | SND_SOC_DAPM_POST_PMU |
+ 			   SND_SOC_DAPM_PRE_PMD | SND_SOC_DAPM_POST_PMD),
+-	SND_SOC_DAPM_PGA_E("HPHL PGA", WCD937X_ANA_HPH, 7, 0, NULL, 0,
+-			   wcd937x_codec_enable_hphl_pa,
+-			   SND_SOC_DAPM_PRE_PMU | SND_SOC_DAPM_POST_PMU |
+-			   SND_SOC_DAPM_PRE_PMD | SND_SOC_DAPM_POST_PMD),
+-	SND_SOC_DAPM_PGA_E("HPHR PGA", WCD937X_ANA_HPH, 6, 0, NULL, 0,
+-			   wcd937x_codec_enable_hphr_pa,
+-			   SND_SOC_DAPM_PRE_PMU | SND_SOC_DAPM_POST_PMU |
+-			   SND_SOC_DAPM_PRE_PMD | SND_SOC_DAPM_POST_PMD),
++
+ 
+ 	SND_SOC_DAPM_DAC_E("RDAC1", NULL, SND_SOC_NOPM, 0, 0,
+ 			   wcd937x_codec_hphl_dac_event,
+@@ -2390,16 +2379,14 @@
+ 	{ "RX1", NULL, "IN1_HPHL" },
+ 	{ "RDAC1", NULL, "RX1" },
+ 	{ "HPHL_RDAC", "Switch", "RDAC1" },
+-	{ "HPHL PGA", NULL, "HPHL_RDAC" },
+-	{ "HPHL", NULL, "HPHL PGA" },
++	{ "HPHL", NULL, "HPHL_RDAC" },
+ 
+ 	{ "IN2_HPHR", NULL, "VDD_BUCK" },
+ 	{ "IN2_HPHR", NULL, "CLS_H_PORT" },
+ 	{ "RX2", NULL, "IN2_HPHR" },
+ 	{ "RDAC2", NULL, "RX2" },
+ 	{ "HPHR_RDAC", "Switch", "RDAC2" },
+-	{ "HPHR PGA", NULL, "HPHR_RDAC" },
+-	{ "HPHR", NULL, "HPHR PGA" },
++	{ "HPHR", NULL, "HPHR_RDAC" },
+ 
+ 	{ "IN3_AUX", NULL, "VDD_BUCK" },
+ 	{ "IN3_AUX", NULL, "CLS_H_PORT" },
+@@ -2656,6 +2643,31 @@
+ 	return sdw_stream_remove_slave(wcd->sdev, wcd->sruntime);
+ }
+ 
++/* Keep the headphone PA inside the enabled SoundWire stream window.
++ * DAPM may power down after hw_free, when its data clocks are already gone. */
++static int wcd937x_codec_mute_stream(struct snd_soc_dai *dai, int mute, int stream)
++{
++	struct wcd937x_priv *wcd937x = dev_get_drvdata(dai->dev);
++	struct snd_soc_component *component = dai->component;
++	bool left, right;
++
++	if (stream != SNDRV_PCM_STREAM_PLAYBACK)
++		return 0;
++
++	left = !mute && wcd937x->hphl_enable;
++	right = !mute && wcd937x->hphr_enable;
++	if (left != wcd937x->hphl_pa_enabled) {
++		wcd937x_codec_enable_hphl_pa(component, left);
++		wcd937x->hphl_pa_enabled = left;
++	}
++	if (right != wcd937x->hphr_pa_enabled) {
++		wcd937x_codec_enable_hphr_pa(component, right);
++		wcd937x->hphr_pa_enabled = right;
++	}
++
++	return 0;
++}
++
+ static int wcd937x_codec_set_sdw_stream(struct snd_soc_dai *dai,
+ 					void *stream, int direction)
+ {
+@@ -2710,6 +2722,7 @@
+ static const struct snd_soc_dai_ops wcd937x_sdw_dai_ops = {
+ 	.hw_params = wcd937x_codec_hw_params,
+ 	.hw_free = wcd937x_codec_free,
++	.mute_stream = wcd937x_codec_mute_stream,
+ 	.set_stream = wcd937x_codec_set_sdw_stream,
+ 	.get_channel_map = wcd937x_get_channel_map,
+ };

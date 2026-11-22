@@ -33,3 +33,19 @@ The package's `VERSION` and filename match the port version in `/etc/banana/rele
 On a handheld, `update check`, `update download`, `update apply <package>`, `update status` and `update switch` are available at `/usr/libexec/banana/update`. Applying writes the other slot but does not reboot automatically.
 
 Alpha25 predates the native OpenABL updater. Its one-time migration to Alpha26 runs the new OS updater from RAM against the verified update package; subsequent releases use Settings and the public release feed directly.
+
+
+## Verify the installed firmware against a release
+
+With the release build's component files in an image directory and SSH enabled:
+
+```sh
+python3 scripts/verify-installed.py --images build/work/native/images \
+  --host root@DUO_IP --output installed-verification.json
+```
+
+The check reads the active SD slot only. It compares the kernel, device tree and complete SquashFS payload (including its image padding) by SHA-256, checks the installed release version, and refuses unexpected root-device layouts. It does not change the handheld or read the writable user-data partition. An existing SSH master can be selected with `--control-path`.
+
+For a hardware-tested release, publish the tested image and update package with their corresponding source commit, `release-manifest.json` and checksums. An `installed-verification.json` asset records the on-device comparison when provided. The full fresh-card image contains the same kernel, DTB and read-only root payload; games, saves, network credentials and the previous recovery slot are separate from this comparison.
+
+The tag workflow preserves already-published verified assets. A later rebuild must not replace them: build timestamps can change archive and image hashes even when the source revision is the same.
