@@ -1,0 +1,32 @@
+#!/bin/sh
+# Optional first-boot data, never executed as shell code. The boot files are
+# private to the owner's SD card and must not be bundled into public images.
+set -eu
+B=/boot/banana-network
+D=/data/banana
+[ -f "$B/enable" ] || exit 0
+[ -f "$D/.network-imported" ] && exit 0
+mkdir -p "$D/ssh"
+if [ -f "$B/wifi.conf" ] && [ ! -f "$D/wifi.conf" ]; then
+    cp "$B/wifi.conf" "$D/wifi.conf"
+fi
+if [ -f "$B/authorized_keys" ]; then
+    # Append only valid key lines, preserving any keys already on this card.
+    touch "$D/ssh/authorized_keys"
+    while IFS= read -r key || [ -n "$key" ]; do
+        case "$key" in ssh-ed25519\ *|ssh-rsa\ *|ecdsa-sha2-*\ *)
+            grep -qxF "$key" "$D/ssh/authorized_keys" || printf '%s\n' "$key" >> "$D/ssh/authorized_keys" ;;
+        esac
+    done < "$B/authorized_keys"
+fi
+if grep -qE '^(ssh-ed25519|ssh-rsa|ecdsa-sha2-[^ ]+) ' "$D/ssh/authorized_keys" 2>/dev/null; then
+    # Preserve the rest of settings; replace only the SSH toggle.
+    touch "$D/settings.conf"
+    sed '/^ *ssh *=/d' "$D/settings.conf" > /run/banana/settings-network.new
+    printf 'ssh = on\n' >> /run/banana/settings-network.new
+    cp /run/banana/settings-network.new "$D/settings.conf"
+    rm -f /run/banana/settings-network.new
+fi
+touch "$D/.network-imported"
+sync
+logger -t network 'Imported first-boot networking files; credentials omitted from logs'

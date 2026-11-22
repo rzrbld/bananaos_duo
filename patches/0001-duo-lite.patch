@@ -1,0 +1,3021 @@
+diff --git a/Makefile b/Makefile
+index b36f7581..634a5749 100644
+--- a/Makefile
++++ b/Makefile
+@@ -18,7 +18,7 @@ BUILDROOT_VERSION = 2026.02.3
+ BUILDROOT_DIR ?= $(CURDIR)/.buildroot
+ ROCKNIXDS_STORE ?=	# (the Store's test: a rocknixds-store checkout with BananaOS's patches)
+ OUT ?= $(CURDIR)/output
+-BOARDS = rgds rgds-plus universal
++BOARDS = rgds rgds-plus universal duolite
+ 
+ $(BUILDROOT_DIR)/Makefile:
+ 	git clone --depth 1 --branch $(BUILDROOT_VERSION) https://github.com/buildroot/buildroot $(BUILDROOT_DIR)
+diff --git a/buildroot/Config.in b/buildroot/Config.in
+index e68e6f8a..3def2b43 100644
+--- a/buildroot/Config.in
++++ b/buildroot/Config.in
+@@ -1,4 +1,13 @@
+ menu "Banana"
++config BR2_BANANA_DUOLITE
++	bool "Retroid Pocket Duo Lite board"
++	depends on BR2_aarch64
++
++source "$BR2_EXTERNAL_BANANA_PATH/package/qcom-adreno-firmware/Config.in"
++source "$BR2_EXTERNAL_BANANA_PATH/package/qcom-qrtr/Config.in"
++source "$BR2_EXTERNAL_BANANA_PATH/package/qcom-tqftpserv/Config.in"
++source "$BR2_EXTERNAL_BANANA_PATH/package/qcom-rmtfs/Config.in"
++source "$BR2_EXTERNAL_BANANA_PATH/package/mesa3d-adreno/Config.in"
+ source "$BR2_EXTERNAL_BANANA_PATH/package/banana-ui/Config.in"
+ source "$BR2_EXTERNAL_BANANA_PATH/package/bananad/Config.in"
+ source "$BR2_EXTERNAL_BANANA_PATH/package/superdrastic/Config.in"
+diff --git a/buildroot/external.mk b/buildroot/external.mk
+index a98a76b8..7543c29e 100644
+--- a/buildroot/external.mk
++++ b/buildroot/external.mk
+@@ -12,6 +12,7 @@ SDL2_CONF_OPTS += --enable-video-offscreen
+ # generic DSI panel driver both panels use, and the ADC joypad driver for the sticks and buttons. Plus the two
+ # handhelds' device trees, from ROCKNIX (tools/sync-rocknix-hw.sh), with Banana's changes to them (dts-patches: the
+ # RG DS's panels at 60 Hz).
++ifneq ($(BR2_BANANA_DUOLITE),y)
+ BANANA_RGDS = $(BR2_EXTERNAL_BANANA_PATH)/board/rgds
+ # ROCKNIX's kernel patches, applied as ROCKNIX applies them (patch -p1, fuzz allowed): a few of them were written
+ # against a slightly different kernel and only fit with fuzz, which Buildroot's own patch step (-F0) refuses
+@@ -48,6 +49,11 @@ ifeq ($(BR2_PACKAGE_BLUEZ5_UTILS)$(BR2_PACKAGE_LINUX_FIRMWARE),yy)
+ LINUX_FIRMWARE_FILES += rtl_bt/rtl8821cs_fw.bin rtl_bt/rtl8761b_config.bin
+ LINUX_FIRMWARE_ALL_LICENSE_FILES += LICENCE.rtlwifi_firmware.txt
+ endif
++endif
++
++ifeq ($(BR2_BANANA_DUOLITE),y)
++include $(BR2_EXTERNAL_BANANA_PATH)/board/duolite/duolite.mk
++endif
+ 
+ # bluez-alsa's codecs beyond Buildroot's options (aptX and aptX HD come with BR2_PACKAGE_LIBOPENAPTX through
+ # bluez-alsa.mk): LDAC (Sony's encoder, package/ldacbt) and FastStream (SBC-based, no library). Which ones a
+diff --git a/buildroot/package/banana-ui/banana-ui.mk b/buildroot/package/banana-ui/banana-ui.mk
+index bafa0321..0228bd0d 100644
+--- a/buildroot/package/banana-ui/banana-ui.mk
++++ b/buildroot/package/banana-ui/banana-ui.mk
+@@ -7,11 +7,12 @@
+ BANANA_UI_VERSION = local
+ BANANA_UI_SITE = $(BR2_EXTERNAL_BANANA_PATH)/../ui
+ BANANA_UI_SITE_METHOD = local
+-BANANA_UI_LICENSE = MIT
+-BANANA_UI_LICENSE_FILES = ../LICENSE
++BANANA_UI_LICENSE = MIT, GPL-3.0+
++BANANA_UI_LICENSE_FILES = LICENSE third_party/banana_menu/COPYING
+ BANANA_UI_DEPENDENCIES = freetype libdrm alsa-lib zlib host-pkgconf libcurl openssl libssh2 libsmb2
+ 
+ define BANANA_UI_BUILD_CMDS
++	$(INSTALL) -m 0644 $(BR2_EXTERNAL_BANANA_PATH)/../LICENSE $(@D)/LICENSE
+ 	# (CC too: banana-ui links rcheevos' rhash, C built with CC - the host's cc otherwise)
+ 	$(TARGET_MAKE_ENV) $(MAKE) -B -C $(@D) CXX="$(TARGET_CXX)" CC="$(TARGET_CC)" CFLAGS="$(TARGET_CFLAGS)" PKG_CONFIG="$(PKG_CONFIG_HOST_BINARY)" \
+ 		CXXFLAGS="$(TARGET_CXXFLAGS) -O2" LDFLAGS="$(TARGET_LDFLAGS)" banana-ui banana-scrape banana-sync banana-bshare banana-fetch
+diff --git a/buildroot/package/libretro-banananes/libretro-banananes.mk b/buildroot/package/libretro-banananes/libretro-banananes.mk
+index 4ce5c1df..79ad2f4e 100644
+--- a/buildroot/package/libretro-banananes/libretro-banananes.mk
++++ b/buildroot/package/libretro-banananes/libretro-banananes.mk
+@@ -12,7 +12,7 @@ LIBRETRO_BANANANES_LICENSE = GPL-2.0
+ LIBRETRO_BANANANES_LICENSE_FILES = Copying
+ 
+ define LIBRETRO_BANANANES_BUILD_CMDS
+-	$(TARGET_MAKE_ENV) $(MAKE) -C $(@D)/banana BUILDROOT=1 CC="$(TARGET_CC)" \
++	$(TARGET_MAKE_ENV) $(MAKE) -C $(@D)/banana BUILDROOT=1 CC="$(TARGET_CC)" $(LIBRETRO_BANANANES_MAKE_OPTS) \
+ 		GIT_VERSION=$(LIBRETRO_BANANANES_VERSION)
+ endef
+ 
+diff --git a/buildroot/package/retroarch/Config.in b/buildroot/package/retroarch/Config.in
+index 4ec0f865..4259a534 100644
+--- a/buildroot/package/retroarch/Config.in
++++ b/buildroot/package/retroarch/Config.in
+@@ -8,7 +8,8 @@ config BR2_PACKAGE_RETROARCH
+ 	select BR2_PACKAGE_FREETYPE
+ 	select BR2_PACKAGE_ZLIB
+ 	select BR2_PACKAGE_XZ
+-	select BR2_PACKAGE_LIBUDEV_ZERO
++	select BR2_PACKAGE_LIBUDEV_ZERO if !BR2_PACKAGE_HAS_UDEV
++	select BR2_PACKAGE_SDL2 if BR2_BANANA_DUOLITE
+ 	help
+ 	  RetroArch, for the systems other than the DS: on one panel through KMS and GLES (no compositor), ALSA,
+ 	  udev input (libudev-zero), and its RGUI menu, whose pixel look fits the menu's.
+diff --git a/buildroot/package/retroarch/cores.in b/buildroot/package/retroarch/cores.in
+index edb6cf31..95d90c14 100644
+--- a/buildroot/package/retroarch/cores.in
++++ b/buildroot/package/retroarch/cores.in
+@@ -101,3 +101,47 @@ config BR2_PACKAGE_LIBRETRO_CHEATS_NDS
+ 	help
+ 	  libretro-database's Action Replay cheats for the Nintendo DS,
+ 	  read by BananaDS's Cheats.
++
++config BR2_PACKAGE_LIBRETRO_GENESIS_PLUS_GX
++	bool "libretro-genesis-plus-gx"
++	depends on BR2_aarch64
++	depends on BR2_INSTALL_LIBSTDCPP
++
++config BR2_PACKAGE_LIBRETRO_CAP32
++	bool "libretro-cap32"
++	depends on BR2_aarch64
++	depends on BR2_INSTALL_LIBSTDCPP
++
++config BR2_PACKAGE_LIBRETRO_MAME2003_PLUS
++	bool "libretro-mame2003-plus"
++	depends on BR2_aarch64
++	depends on BR2_INSTALL_LIBSTDCPP
++
++config BR2_PACKAGE_LIBRETRO_PPSSPP
++	bool "libretro-ppsspp"
++	depends on BR2_aarch64
++	depends on BR2_INSTALL_LIBSTDCPP
++	select BR2_PACKAGE_LIBZIP
++	select BR2_PACKAGE_ZSTD
++	select BR2_PACKAGE_FFMPEG
++	select BR2_PACKAGE_FFMPEG_SWSCALE
++
++config BR2_PACKAGE_LIBRETRO_FLYCAST
++	bool "libretro-flycast"
++	depends on BR2_aarch64
++	depends on BR2_INSTALL_LIBSTDCPP
++	select BR2_PACKAGE_LIBZIP
++
++config BR2_PACKAGE_LIBRETRO_DOLPHIN
++	bool "libretro-dolphin"
++	depends on BR2_aarch64
++	depends on BR2_INSTALL_LIBSTDCPP
++	select BR2_PACKAGE_LZO
++	select BR2_PACKAGE_LIBUSB
++	select BR2_PACKAGE_LIBEVDEV
++
++config BR2_PACKAGE_LIBRETRO_CITRA
++	bool "libretro-citra"
++	depends on BR2_aarch64
++	depends on BR2_INSTALL_LIBSTDCPP
++	select BR2_PACKAGE_BOOST
+diff --git a/buildroot/package/retroarch/retroarch.mk b/buildroot/package/retroarch/retroarch.mk
+index 747f09c7..471d4db3 100644
+--- a/buildroot/package/retroarch/retroarch.mk
++++ b/buildroot/package/retroarch/retroarch.mk
+@@ -8,7 +8,12 @@ RETROARCH_VERSION = v1.22.2
+ RETROARCH_SITE = $(call github,libretro,RetroArch,$(RETROARCH_VERSION))
+ RETROARCH_LICENSE = GPL-3.0+
+ RETROARCH_LICENSE_FILES = COPYING
+-RETROARCH_DEPENDENCIES = host-pkgconf alsa-lib libdrm libegl libgles libgbm freetype zlib xz libudev-zero
++RETROARCH_DEPENDENCIES = host-pkgconf alsa-lib libdrm libegl libgles libgbm freetype zlib xz
++ifeq ($(BR2_PACKAGE_HAS_UDEV),y)
++RETROARCH_DEPENDENCIES += udev
++else
++RETROARCH_DEPENDENCIES += libudev-zero
++endif
+ 
+ # The joypad autoconfigs live in libretro's own repository, not in RetroArch's tree; its udev driver reads them from
+ # joypad_autoconfig_dir. The udev/ set is fetched here and installed below (8BitDo, Xbox and PlayStation pads); the
+@@ -30,11 +35,18 @@ RETROARCH_EXTRA_DOWNLOADS += $(foreach f,$(RETROARCH_RGUI_FONTS),\
+ # what a handheld with two KMS panels and no display server needs (built and linked for aarch64 with these options)
+ RETROARCH_CONF_OPTS = --prefix=/usr \
+ 	--disable-x11 --disable-wayland --disable-pulse --disable-oss --disable-jack --disable-qt --disable-vulkan \
+-	--disable-ffmpeg --disable-sdl --disable-sdl2 --disable-systemd --disable-discord --disable-cdrom \
++	--disable-ffmpeg --disable-sdl --disable-systemd --disable-discord --disable-cdrom \
+ 	--disable-materialui --disable-xmb --enable-ozone --enable-rgui \
+ 	--enable-kms --enable-egl --enable-opengles --enable-opengles3 --enable-alsa --enable-udev --enable-freetype \
+ 	--enable-networking --enable-threads --enable-zlib
+ 
++ifeq ($(BR2_BANANA_DUOLITE),y)
++RETROARCH_DEPENDENCIES += sdl2
++RETROARCH_CONF_OPTS += --enable-sdl2
++else
++RETROARCH_CONF_OPTS += --disable-sdl2
++endif
++
+ define RETROARCH_CONFIGURE_CMDS
+ 	cd $(@D) && $(TARGET_CONFIGURE_OPTS) CROSS_COMPILE="$(TARGET_CROSS)" PKG_CONF_PATH="$(PKG_CONFIG_HOST_BINARY)" \
+ 		CFLAGS="$(TARGET_CFLAGS)" CXXFLAGS="$(TARGET_CXXFLAGS)" LDFLAGS="$(TARGET_LDFLAGS)" \
+diff --git a/buildroot/package/rocknix-extra-firmware/rocknix-extra-firmware.mk b/buildroot/package/rocknix-extra-firmware/rocknix-extra-firmware.mk
+index f1c480bc..f1d5e3e3 100644
+--- a/buildroot/package/rocknix-extra-firmware/rocknix-extra-firmware.mk
++++ b/buildroot/package/rocknix-extra-firmware/rocknix-extra-firmware.mk
+@@ -10,8 +10,15 @@ ROCKNIX_EXTRA_FIRMWARE_SITE = https://github.com/ROCKNIX/extra-firmware/archive
+ ROCKNIX_EXTRA_FIRMWARE_SOURCE = $(ROCKNIX_EXTRA_FIRMWARE_VERSION).tar.gz
+ ROCKNIX_EXTRA_FIRMWARE_LICENSE = PROPRIETARY
+ 
++ifeq ($(BR2_BANANA_DUOLITE),y)
++define ROCKNIX_EXTRA_FIRMWARE_INSTALL_TARGET_CMDS
++	mkdir -p $(TARGET_DIR)/lib/firmware
++	cp -a $(@D)/SM6115/. $(TARGET_DIR)/lib/firmware/
++endef
++else
+ define ROCKNIX_EXTRA_FIRMWARE_INSTALL_TARGET_CMDS
+ 	$(INSTALL) -D -m 0644 $(@D)/RK3566/aw88166_acf.bin $(TARGET_DIR)/lib/firmware/aw88166_acf.bin
+ endef
++endif
+ 
+ $(eval $(generic-package))
+diff --git a/buildroot/package/rocknixds-store/rocknixds-store.hash b/buildroot/package/rocknixds-store/rocknixds-store.hash
+index 1d85b044..7e6e7bff 100644
+--- a/buildroot/package/rocknixds-store/rocknixds-store.hash
++++ b/buildroot/package/rocknixds-store/rocknixds-store.hash
+@@ -1,3 +1,3 @@
+ # the tarball Buildroot downloads (github helper, ed9e3b5: the commit dodakvarter pins), and its licence
+ sha256  199771104a4853fd26bd51ad0b1282a5c4be8d29e45e844573180e37d5f2ada0  rocknixds-store-ed9e3b543e6891ec4d75ceb490f73d37ebe84002.tar.gz
+-sha256  42d4132cd7491bdff31cd0362dd00ac0fb5f888fe920ac685c3ce3d16ed585ae  LICENSE
++sha256  28ea41496d79682323b90c0b8e3a5efe6ce8dd26a3ba8dda272cbe06ca04d644  LICENSE
+diff --git a/store/apps/activity/banana-activity.cpp b/store/apps/activity/banana-activity.cpp
+index 3bfcd2cc..04d85eac 100644
+--- a/store/apps/activity/banana-activity.cpp
++++ b/store/apps/activity/banana-activity.cpp
+@@ -167,6 +167,7 @@ class Display {
+ 		} bufs[2];
+ 	} panels[2];
+ 	int drm_fd = -1;
++	int top_rotation = 0;
+ 
+ 	bool alloc_fb(Panel &p, int idx)
+ 	{
+@@ -213,8 +214,9 @@ public:
+ 		close(drm_fd);
+ 	}
+ 
+-	bool open(const std::string &want_top, std::string &error)
++	bool open(const std::string &want_top, std::string &error, int rotation = 0)
+ 	{
++		top_rotation = rotation == 90 || rotation == 270 ? rotation : 0;
+ 		drm_fd = ::open("/dev/dri/card0", O_RDWR | O_CLOEXEC);
+ 		if (drm_fd < 0) {
+ 			error = "Cannot open /dev/dri/card0";
+@@ -300,16 +302,24 @@ public:
+ 		return true;
+ 	}
+ 
+-	int width() const { return panels[0].w; }
+-	int height() const { return panels[0].h; }
++	int width(int screen = 0) const { return screen == 0 && top_rotation ? panels[screen].h : panels[screen].w; }
++	int height(int screen = 0) const { return screen == 0 && top_rotation ? panels[screen].w : panels[screen].h; }
+ 
+ 	void present(const uint32_t *screens[2])
+ 	{
+ 		for (int i = 0; i < 2; ++i) {
+ 			Panel &p = panels[i];
+ 			if (!p.connected || !screens[i]) continue;
+-			uint32_t *dst = p.bufs[p.front].map;
+-			memcpy(dst, screens[i], (size_t)p.w * p.h * 4);
++			for (int y = 0; y < p.h; ++y) {
++				uint32_t *dst = (uint32_t *)((uint8_t *)p.bufs[p.front].map + (size_t)y * p.bufs[p.front].pitch);
++				if (i == 0 && top_rotation) {
++					for (int x = 0; x < p.w; ++x) {
++						int sx = top_rotation == 270 ? p.h - 1 - y : y;
++						int sy = top_rotation == 270 ? x : p.w - 1 - x;
++						dst[x] = screens[i][(size_t)sy * width(i) + sx];
++					}
++				} else memcpy(dst, screens[i] + (size_t)y * width(i), (size_t)p.w * 4);
++			}
+ 			struct drm_mode_crtc setc = {};
+ 			setc.crtc_id = p.crtc_id;
+ 			setc.fb_id = p.bufs[p.front].fb_id;
+@@ -616,6 +626,7 @@ public:
+ 	uint32_t *px = nullptr;
+ 
+ 	int U(int v) const { return (int)std::lround(v * s); }
++	int logicalWidth() const { return (int)std::lround(w / s); }
+ 
+ 	inline void put(int x, int y, uint32_t c)
+ 	{
+@@ -2138,11 +2149,11 @@ void App::drawStatus(Canvas &c)
+ 	c.box(124, 19, 132, 26, plate);
+ 	drawLogo(c, 132, 22);
+ 	c.text("ACTIVITY", 157, 24, 16, 0xfffaf0, true, 0, 0, 1.4f);
+-	int cw = c.text(clock, 622, 20, 20, C_INK, true, 2);
+-	c.text(date, 622 - cw - 8, 20, 19, C_INK, false, 2);
++	int cw = c.text(clock, c.logicalWidth() - 18, 20, 20, C_INK, true, 2);
++	c.text(date, c.logicalWidth() - 18 - cw - 8, 20, 19, C_INK, false, 2);
+ }
+ 
+-void App::drawSheet(Canvas &c) { c.box(18, 60, 604, 406, sheetStyle()); }
++void App::drawSheet(Canvas &c) { c.box(18, 60, c.logicalWidth() - 36, 406, sheetStyle()); }
+ 
+ void App::drawChips(Canvas &c, int right, int y)
+ {
+@@ -2395,7 +2406,7 @@ void App::drawLibraryTop(Canvas &c)
+ 	drawStatus(c);
+ 	drawSheet(c);
+ 	c.text(periodPlayed(period), 42, 92, 13, C_MUTED, false, 0, 0, 1.4f, true);
+-	drawChips(c, 598, 84);
++	drawChips(c, (c.logicalWidth() - 42), 84);
+ 
+ 	bool noHist = data.sessions.empty();
+ 	c.text(period == P_ALL && noHist ? fmtTotal(statsTotal) : fmtTotal(agg.secs), 40, 110, 44, C_NAVY, true, 0, 0,
+@@ -2432,12 +2443,12 @@ void App::drawLibraryTop(Canvas &c)
+ 			if (g.plays > 0) fromStats[g.sys] += g.secs;
+ 		ts = topKey(fromStats, &topSys);
+ 	}
+-	drawStat(c, 330, 118, std::to_string(agg.sessions), "SESSIONS");
+-	drawStat(c, 468, 118, agg.sessions > 0 ? fmtTotal(agg.secs / agg.sessions) : std::string("0m"), "AVG SESSION");
+-	drawStat(c, 330, 176, std::to_string(agg.days.size()), "ACTIVE DAYS");
+-	drawStat(c, 468, 176, ts.empty() ? std::string("-") : sysName(ts), "TOP SYSTEM");
+-	c.fill(c.U(316), c.U(120), c.U(2), c.U(92), C_LINE, 60);
+-	c.fill(c.U(42), c.U(236), c.U(556), c.U(2), C_LINE, 70);
++	drawStat(c, (c.logicalWidth() - 310), 118, std::to_string(agg.sessions), "SESSIONS");
++	drawStat(c, (c.logicalWidth() - 172), 118, agg.sessions > 0 ? fmtTotal(agg.secs / agg.sessions) : std::string("0m"), "AVG SESSION");
++	drawStat(c, (c.logicalWidth() - 310), 176, std::to_string(agg.days.size()), "ACTIVE DAYS");
++	drawStat(c, (c.logicalWidth() - 172), 176, ts.empty() ? std::string("-") : sysName(ts), "TOP SYSTEM");
++	c.fill(c.U((c.logicalWidth() - 324)), c.U(120), c.U(2), c.U(92), C_LINE, 60);
++	c.fill(c.U(42), c.U(236), c.U((c.logicalWidth() - 84)), c.U(2), C_LINE, 70);
+ 
+ 	c.text("LAST 7 DAYS", 42, 248, 13, C_MUTED, false, 0, 0, 1.4f, true);
+ 	long long base = dayStart((time_t)now);
+@@ -2449,11 +2460,11 @@ void App::drawLibraryTop(Canvas &c)
+ 		vals[i] = it == weekAgg.days.end() ? 0 : it->second;
+ 		if (vals[i] > mx) mx = vals[i];
+ 	}
+-	if (mx > 0) c.text("PEAK " + fmtTotal(mx), 598, 248, 12, C_MUTED, false, 2, 0, 1.2f, true);
+-	else c.text("NO SESSIONS THIS WEEK", 598, 248, 12, C_MUTED, false, 2, 0, 1.2f, true);
++	if (mx > 0) c.text("PEAK " + fmtTotal(mx), (c.logicalWidth() - 42), 248, 12, C_MUTED, false, 2, 0, 1.2f, true);
++	else c.text("NO SESSIONS THIS WEEK", (c.logicalWidth() - 42), 248, 12, C_MUTED, false, 2, 0, 1.2f, true);
+ 
+-	int bw = 40, gap = 30;
+-	int x0 = 42 + (556 - (7 * bw + 6 * gap)) / 2;
++	int bw = 40, gap = 30 + (c.logicalWidth() - 640) / 6;
++	int x0 = 42 + ((c.logicalWidth() - 84) - (7 * bw + 6 * gap)) / 2;
+ 	int top = 282, bot = 378;
+ 	for (int i = 0; i < 7; i++) {
+ 		int x = x0 + i * (bw + gap);
+@@ -2483,7 +2494,7 @@ void App::drawLibraryTop(Canvas &c)
+ 		if (today) c.fill(c.U(x + bw / 2 - 5), c.U(bot + 28), c.U(10), c.U(3), gAccent.base);
+ 	}
+ 
+-	c.text(insightText(data, agg, period, now), 42, 418, 12, C_MUTED, false, 0, 556, 1.2f, true);
++	c.text(insightText(data, agg, period, now), 42, 418, 12, C_MUTED, false, 0, (c.logicalWidth() - 84), 1.2f, true);
+ }
+ 
+ void App::drawTimelineTop(Canvas &c)
+@@ -2505,7 +2516,7 @@ void App::drawTimelineTop(Canvas &c)
+ 	} else if (dayOffset == -1) {
+ 		BoxStyle b = chipStyle(false);
+ 		c.box(514, 84, 84, 22, b);
+-		c.text("YESTERDAY", 556, 89, 12, C_MUTED, true, 1, 0, 0.8f);
++		c.text("YESTERDAY", (c.logicalWidth() - 84), 89, 12, C_MUTED, true, 1, 0, 0.8f);
+ 	}
+ 
+ 	c.text(fmtWeekday((time_t)day), 42, 116, 13, gAccent.base, false, 0, 0, 1.6f, true);
+@@ -2526,13 +2537,13 @@ void App::drawTimelineTop(Canvas &c)
+ 	snprintf(nx, sizeof(nx), "%s %02d", WEEKDAYS3[ntm.tm_wday], ntm.tm_mday);
+ 	c.text(std::string(pv) + " \xC2\xB7 " + nx, 42, 186, 12, C_MUTED, false, 0, 0, 1.2f, true);
+ 
+-	drawStat(c, 330, 118, std::to_string(d.sessions), "SESSIONS");
+-	drawStat(c, 468, 118, fmtTotal(d.secs), "TIME");
+-	drawStat(c, 330, 176, d.sessions > 0 ? fmtTotal(d.secs / d.sessions) : std::string("0m"), "AVG");
++	drawStat(c, (c.logicalWidth() - 310), 118, std::to_string(d.sessions), "SESSIONS");
++	drawStat(c, (c.logicalWidth() - 172), 118, fmtTotal(d.secs), "TIME");
++	drawStat(c, (c.logicalWidth() - 310), 176, d.sessions > 0 ? fmtTotal(d.secs / d.sessions) : std::string("0m"), "AVG");
+ 	std::string last = d.lastEndTod > 0 ? fmtClock((time_t)d.lastEndTod) : std::string("-");
+-	drawStat(c, 468, 176, last, "LAST");
+-	c.fill(c.U(316), c.U(120), c.U(2), c.U(92), C_LINE, 60);
+-	c.fill(c.U(42), c.U(236), c.U(556), c.U(2), C_LINE, 70);
++	drawStat(c, (c.logicalWidth() - 172), 176, last, "LAST");
++	c.fill(c.U((c.logicalWidth() - 324)), c.U(120), c.U(2), c.U(92), C_LINE, 60);
++	c.fill(c.U(42), c.U(236), c.U((c.logicalWidth() - 84)), c.U(2), C_LINE, 70);
+ 
+ 	c.text("ACTIVITY BY HOUR", 42, 248, 13, C_MUTED, false, 0, 0, 1.4f, true);
+ 	long long hmax = 0;
+@@ -2545,11 +2556,11 @@ void App::drawTimelineTop(Canvas &c)
+ 	if (hpeak >= 0) {
+ 		char pk[32];
+ 		snprintf(pk, sizeof(pk), "PEAK %02d:00", hpeak);
+-		c.text(pk, 598, 248, 12, C_MUTED, false, 2, 0, 1.2f, true);
++		c.text(pk, (c.logicalWidth() - 42), 248, 12, C_MUTED, false, 2, 0, 1.2f, true);
+ 	}
+ 
+ 	int bw = 12, gap = 8;
+-	int x0 = 42 + (556 - (24 * bw + 23 * gap)) / 2;
++	int x0 = 42 + ((c.logicalWidth() - 84) - (24 * bw + 23 * gap)) / 2;
+ 	int top = 276, bot = 362;
+ 	for (int h = 0; h < 24; h++) {
+ 		int x = x0 + h * (bw + gap);
+@@ -2577,7 +2588,7 @@ void App::drawTimelineTop(Canvas &c)
+ 	c.text("TIME OF DAY", 42, 388, 12, C_MUTED, false, 0, 0, 1.4f, true);
+ 	uint32_t tcol[4] = { mixColor(gAccent.dark, 0.75, C_BG), gAccent.low, gAccent.base, gAccent.light };
+ 	const char *tn[4] = { "NIGHT 0-6", "MORN 6-12", "AFT 12-18", "EVE 18-24" };
+-	int bx = 42, bwd = 556, by = 406, bh = 18;
++	int bx = 42, bwd = (c.logicalWidth() - 84), by = 406, bh = 18;
+ 	BoxStyle track;
+ 	track.r = 6;
+ 	track.fill = C_TRACK;
+@@ -2614,7 +2625,7 @@ void App::drawTrendsTop(Canvas &c)
+ 	drawStatus(c);
+ 	drawSheet(c);
+ 	c.text("TRENDS", 42, 92, 13, C_MUTED, false, 0, 0, 1.4f, true);
+-	drawChips(c, 598, 84);
++	drawChips(c, (c.logicalWidth() - 42), 84);
+ 
+ 	c.text(period == P_ALL && data.sessions.empty() ? fmtTotal(statsTotal) : fmtTotal(aggAll.secs), 40, 110, 40,
+ 	       C_NAVY, true, 0, 0, 0.5f);
+@@ -2624,15 +2635,15 @@ void App::drawTrendsTop(Canvas &c)
+ 		c.text("SINCE " + fmtDateNumeric((time_t)data.sessions.front().end), 42, 158, 12, C_MUTED, false, 0, 0,
+ 		       1.2f, true);
+ 	}
+-	drawStat(c, 330, 118, std::to_string(aggAll.days.size()), "DAYS PLAYED");
+-	drawStat(c, 468, 118, std::to_string(aggAll.game.size()), "GAMES");
+-	drawStat(c, 330, 176, std::to_string(aggAll.sys.size()), "SYSTEMS");
+-	drawStat(c, 468, 176, fmtTotal(aggAll.longest), "LONGEST");
+-	c.fill(c.U(316), c.U(120), c.U(2), c.U(92), C_LINE, 60);
+-	c.fill(c.U(42), c.U(228), c.U(556), c.U(2), C_LINE, 70);
++	drawStat(c, (c.logicalWidth() - 310), 118, std::to_string(aggAll.days.size()), "DAYS PLAYED");
++	drawStat(c, (c.logicalWidth() - 172), 118, std::to_string(aggAll.game.size()), "GAMES");
++	drawStat(c, (c.logicalWidth() - 310), 176, std::to_string(aggAll.sys.size()), "SYSTEMS");
++	drawStat(c, (c.logicalWidth() - 172), 176, fmtTotal(aggAll.longest), "LONGEST");
++	c.fill(c.U((c.logicalWidth() - 324)), c.U(120), c.U(2), c.U(92), C_LINE, 60);
++	c.fill(c.U(42), c.U(228), c.U((c.logicalWidth() - 84)), c.U(2), C_LINE, 70);
+ 
+ 	c.text("LAST 18 WEEKS", 42, 240, 13, C_MUTED, false, 0, 0, 1.4f, true);
+-	c.text("EACH SQUARE = A DAY", 598, 240, 11, C_MUTED, false, 2, 0, 1.2f, true);
++	c.text("EACH SQUARE = A DAY", (c.logicalWidth() - 42), 240, 11, C_MUTED, false, 2, 0, 1.2f, true);
+ 
+ 	std::map<long long, long long> hm;
+ 	for (auto &s : data.sessions) hm[dayStart((time_t)s.end)] += s.secs;
+@@ -2696,7 +2707,7 @@ void App::drawTrendsTop(Canvas &c)
+ 	st.fill = C_TRACK;
+ 	st.border = mixColor(C_LINE, 0.6, C_BG);
+ 	st.borderW = 2;
+-	c.box(42, 400, 556, 18, st);
++	c.box(42, 400, (c.logicalWidth() - 84), 18, st);
+ 	int sx = 44;
+ 	long long tot = aggAll.secs;
+ 	for (size_t i = 0; i < segs.size(); i++) {
+@@ -2892,7 +2903,8 @@ struct Args {
+ 	std::string period = "week";
+ 	std::string connector = "DSI-2";
+ 	std::string accent = "";
+-	std::string size = "640x480";
++	std::string size = "640x480", topSize;
++	int topRotation = 0;
+ 	std::string press;
+ 	int day = 0;
+ 	bool inputDebug = false;
+@@ -2902,6 +2914,7 @@ static void usage()
+ {
+ 	printf("banana-activity [--root /data] [--smoke PREFIX] [--view library|timeline|trends]\n");
+ 	printf("                [--period week|month|all] [--day N] [--size 640x480] [--connector DSI-2]\n");
++	printf("                [--top-size 1920x1080] [--top-rotation 0|90|270]\n");
+ 	printf("                [--accent yellow|blue|red|green|purple|pink] [--input-debug]\n");
+ }
+ 
+@@ -2992,6 +3005,8 @@ int main(int argc, char **argv)
+ 		else if (k == "--period" && i + 1 < argc) a.period = argv[++i];
+ 		else if (k == "--day" && i + 1 < argc) a.day = atoi(argv[++i]);
+ 		else if (k == "--size" && i + 1 < argc) a.size = argv[++i];
++		else if (k == "--top-size" && i + 1 < argc) a.topSize = argv[++i];
++		else if (k == "--top-rotation" && i + 1 < argc) a.topRotation = atoi(argv[++i]);
+ 		else if (k == "--connector" && i + 1 < argc) a.connector = argv[++i];
+ 		else if (k == "--accent" && i + 1 < argc) a.accent = argv[++i];
+ 		else if (k == "--press" && i + 1 < argc) a.press = argv[++i];
+@@ -3011,16 +3026,18 @@ int main(int argc, char **argv)
+ 	if (!a.smoke.empty()) {
+ 		int w = 640, h = 480;
+ 		parseSize(a.size, w, h);
+-		std::vector<uint32_t> tb((size_t)w * h), bb((size_t)w * h);
++		int tw = w, th = h;
++		if (!a.topSize.empty()) parseSize(a.topSize, tw, th);
++		std::vector<uint32_t> tb((size_t)tw * th), bb((size_t)w * h);
+ 		Canvas top, bot;
+ 		top.px = tb.data();
+-		top.w = w;
+-		top.h = h;
+-		top.s = (float)w / 640.0f;
++		top.w = tw;
++		top.h = th;
++		top.s = (float)th / 480.0f;
+ 		bot.px = bb.data();
+ 		bot.w = w;
+ 		bot.h = h;
+-		bot.s = top.s;
++		bot.s = (float)h / 480.0f;
+ 		app.now = nowSecs();
+ 		app.power = readPower();
+ 		app.rebuild();
+@@ -3072,25 +3089,26 @@ int main(int argc, char **argv)
+ 
+ 	banana::Display disp;
+ 	std::string err;
+-	if (!disp.open(a.connector, err)) {
++	if (!disp.open(a.connector, err, a.topRotation)) {
+ 		fprintf(stderr, "banana-activity: %s\n", err.c_str());
+ 		return 1;
+ 	}
+ 	const int W = disp.width(), H = disp.height();
+-	std::vector<uint32_t> tb((size_t)W * H), bb((size_t)W * H);
++	const int BW = disp.width(1), BH = disp.height(1);
++	std::vector<uint32_t> tb((size_t)W * H), bb((size_t)BW * BH);
+ 	Canvas top, bot;
+ 	top.px = tb.data();
+ 	top.w = W;
+ 	top.h = H;
+-	top.s = (float)W / 640.0f;
++	top.s = (float)H / 480.0f;
+ 	bot.px = bb.data();
+-	bot.w = W;
+-	bot.h = H;
+-	bot.s = top.s;
++	bot.w = BW;
++	bot.h = BH;
++	bot.s = (float)BH / 480.0f;
+ 
+ 	banana::Input in;
+ 	in.debug = a.inputDebug;
+-	in.open(W, H);
++	in.open(BW, BH);
+ 
+ 	app.rebuild();
+ 	bool dirty = true;
+@@ -3133,7 +3151,7 @@ int main(int argc, char **argv)
+ 			if (app.tick()) dirty = true;
+ 			continue;
+ 		}
+-		float sc = (float)W / 640.0f;
++		float sc = bot.s;
+ 		for (size_t i = 0; i < pfds.size() && i < fds.size(); i++) {
+ 			if (!(pfds[i].revents & POLLIN)) continue;
+ 			in.read(fds[i], [&](const InputEvent &ev) {
+diff --git a/system/bananad/bananad.c b/system/bananad/bananad.c
+index 05ef55a4..8a5d98c2 100644
+--- a/system/bananad/bananad.c
++++ b/system/bananad/bananad.c
+@@ -81,6 +81,9 @@ static struct {
+ 	int recorder;			/* the flight recorder (Developer options): everything bananad sees, written to banana/logs/sessions */
+ } cfg = { "auto", 5, 8, 10, 1, 2000, 3, "deep", 128, 20, 5, 1, 4, 5, 2, 30, 12, 0, 0 };
+ 
++static int duolite;
++static char led_mode[16] = "charging";
++static char fan_profile[16] = "auto";
+ static int devfd[MAXDEV], ndev;
+ static void leds_update(void);
+ static void audio_route(void);
+@@ -149,6 +152,8 @@ static void load_conf(const char *path)
+ 		else if (!strcmp(k, "power_long_ms")) cfg.power_long_ms = atoi(v);
+ 		else if (!strcmp(k, "battery_shutdown_percent")) cfg.battery_off_pct = atoi(v);
+ 		else if (!strcmp(k, "mem_sleep")) snprintf(cfg.mem_sleep, sizeof cfg.mem_sleep, "%s", v);
++		else if (!strcmp(k, "fan_profile")) snprintf(fan_profile, sizeof fan_profile, "%s", v);
++		else if (!strcmp(k, "led_mode")) snprintf(led_mode, sizeof led_mode, "%s", v);
+ 		else if (!strcmp(k, "led_brightness")) cfg.led_brightness = atoi(v);
+ 		else if (!strcmp(k, "led_low_percent")) cfg.led_low = atoi(v);
+ 		else if (!strcmp(k, "led_critical_percent")) cfg.led_critical = atoi(v);
+@@ -210,6 +215,30 @@ static void read_str(const char *path, char *out, size_t n)
+ 	fclose(f);
+ }
+ 
++/* The Duo kernel exposes a minimum separate from the thermal governor's
++ * state. Never fall back to pwm1: a raw write would fight thermal control. */
++static void fan_apply(void)
++{
++	if (!duolite) return;
++	int floor = !strcmp(fan_profile, "low") ? 32 : !strcmp(fan_profile, "medium") ? 36 : !strcmp(fan_profile, "high") ? 40 : 0;
++	DIR *d = opendir("/sys/class/hwmon");
++	if (!d) return;
++	struct dirent *e;
++	while ((e = readdir(d))) {
++		if (e->d_name[0] == '.') continue;
++		char p[320], name[32], value[16];
++		snprintf(p, sizeof p, "/sys/class/hwmon/%s/name", e->d_name);
++		read_str(p, name, sizeof name);
++		if (strcmp(name, "pwmfan")) continue;
++		snprintf(p, sizeof p, "/sys/class/hwmon/%s/pwm1_floor", e->d_name);
++		snprintf(value, sizeof value, "%d", floor);
++		if (write_file(p, value)) say("fan: kernel minimum control unavailable");
++		else say("fan: %s, minimum PWM %d (thermal override active)", fan_profile, floor);
++		break;
++	}
++	closedir(d);
++}
++
+ /* fork + exec, no shell; waits */
+ static int run(char *const argv[])
+ {
+@@ -640,6 +669,7 @@ static int battery_capacity(void)
+ 	int r = -1;
+ 	while (r < 0 && (e = readdir(d))) {
+ 		if (e->d_name[0] == '.') continue;
++		if (duolite && strcmp(e->d_name, "battery")) continue;
+ 		char p[320], t[32];
+ 		snprintf(p, sizeof p, "/sys/class/power_supply/%s/type", e->d_name);
+ 		read_str(p, t, sizeof t);
+@@ -1551,6 +1581,7 @@ static int battery_state(char *name, size_t n, int *pct, int *charging)
+ 	int found = 0;
+ 	while (!found && (e = readdir(d))) {
+ 		if (e->d_name[0] == '.') continue;
++		if (duolite && strcmp(e->d_name, "battery")) continue;
+ 		char p[320], s[32];
+ 		snprintf(p, sizeof p, "/sys/class/power_supply/%s/type", e->d_name);
+ 		read_str(p, s, sizeof s);
+@@ -1593,6 +1624,36 @@ int leds_last = -2;	/* the upper LED's state as last set; -2: set it again */
+ static int amber_last = -2;	/* the charging LED's, the same way */
+ static void leds_update(void)
+ {
++	if (duolite) {
++		/* Only the physical RGB LED: input devices expose unrelated RGB LEDs too. */
++		const char *led = "/sys/class/leds/rgb:status";
++		char bat[256];
++		int pct = -1, charging = 0;
++		battery_state(bat, sizeof bat, &pct, &charging);
++		int plugged = charger_online();
++		int level = cfg.led_brightness;
++		if (level < 0) level = 0;
++		if (level > 255) level = 255;
++		int state = 0;
++		if (level && strcmp(led_mode, "off")) {
++			if (plugged) {
++				char status[32];
++				read_str("/sys/class/power_supply/battery/status", status, sizeof status);
++				state = !strcmp(status, "Full") || pct >= 100 ? 1 : 4;
++			}
++			else if (!strcmp(led_mode, "battery"))
++				state = pct >= 0 && pct <= cfg.led_critical ? 3 : pct >= 0 && pct <= cfg.led_low ? 2 : 1;
++		}
++		/* Include brightness in the cache, so a setting change applies immediately. */
++		int value = state * 256 + level;
++		if (leds_last != value) {
++			led_write(led, "brightness", "0");
++			led_write(led, "multi_intensity", state == 4 ? "255 128 0" : state >= 2 ? "255 0 0" : "0 255 0");
++			led_set(led, !state ? "off" : state == 3 ? "blink" : "on", level);
++			leds_last = value;
++		}
++		return;
++	}
+ 	static char green[300], red[300], amber[300];
+ 	static int looked;
+ 	int last = leds_last;
+@@ -1950,6 +2011,7 @@ static int battery_discharging_pct(void)
+ 	int r = -1;
+ 	while ((e = readdir(d))) {
+ 		if (e->d_name[0] == '.') continue;
++		if (duolite && strcmp(e->d_name, "battery")) continue;
+ 		char p[320], s[32];
+ 		snprintf(p, sizeof p, "/sys/class/power_supply/%s/type", e->d_name);
+ 		read_str(p, s, sizeof s);
+@@ -2049,10 +2111,15 @@ int main(int argc, char **argv)
+ {
+ 	(void)argc; (void)argv;
+ 	openlog("bananad", LOG_PID, LOG_DAEMON);
++	char board[32];
++	read_str("/etc/banana/board", board, sizeof board);
++	duolite = !strcmp(board, "duolite");
++	if (duolite) { BL[0] = "backlight"; BL[1] = "serial0-0"; }
+ 	test_lid = getenv("BANANAD_TEST_LID");
+ 	load_conf("/etc/banana/bananad.conf");
+ 	load_conf("/data/banana/bananad.conf");
+ 	load_timezone();
++	fan_apply();
+ 	/* the LEDs at the user's level first: everything below (the inputs, alsactl, the mixer, the second card) takes a
+ 	 * while, and the power LED is the first sign the handheld is starting (U-Boot lit it, the kernel kept it on) */
+ 	leds_update();
+@@ -2157,6 +2224,7 @@ int main(int argc, char **argv)
+ 			save_volume_at = mono() + 2;	/* the settings screen may have set the volume: keep it as the keys' is kept */
+ 			leds_last = -2;
+ 			leds_update();
++			fan_apply();
+ 			say("settings read again: lid %s, auto-sleep %g min, LEDs %d", cfg.lid_sleep ? "sleeps" : "ignored", cfg.autosleep_min, cfg.led_brightness);
+ 			/* the menu's Power > Sleep: the same sleep as a press of the power button, half a second on */
+ 			if (unlink("/run/banana/sleep-now") == 0) { menu_sleep_at = mono() + 0.5; say("the menu asked for a sleep"); }
+diff --git a/system/rootfs/etc/banana/sleep.d/10-wifi b/system/rootfs/etc/banana/sleep.d/10-wifi
+index c4d4f4b5..0f89f8c6 100755
+--- a/system/rootfs/etc/banana/sleep.d/10-wifi
++++ b/system/rootfs/etc/banana/sleep.d/10-wifi
+@@ -1,6 +1,30 @@
+ #!/bin/sh
+ # The RG DS's Wi-Fi (RTL8821CS on SDIO) doesn't come back from a suspend by itself: unload it before, load it after
+ # and start it again when it was on. "post" runs in the background, after the game and the menu are back.
++if [ "$(cat /etc/banana/board 2>/dev/null)" = duolite ]; then
++    # ath10k spends ~1.5 s restarting an active interface in kernel resume.
++    # Quiesce it before sleep; reconnect after the screen and input are back.
++    # Keep the driver loaded and leave saved networks and the user's choice alone.
++    exec 8>/run/banana/wifi-hook.lock
++    flock -w 10 8 || exit 0
++    case $1 in
++    pre)
++        if [ -f /run/banana/wpa.pid ]; then
++            touch /run/banana/wifi-was-up
++            /usr/libexec/banana/wifi down 8>&-
++        fi
++        ;;
++    post)
++        if [ -f /run/banana/wifi-was-up ]; then
++            rm -f /run/banana/wifi-was-up
++            # The subshell owns lock 8 until up finishes; Wi-Fi daemons must
++            # not inherit it. A rapid second sleep waits for this startup.
++            ( /usr/libexec/banana/wifi up 8>&- >/dev/null 2>&1; exit 0 ) &
++        fi
++        ;;
++    esac
++    exit 0
++fi
+ [ -d /sys/module/rtw88_8821cs ] || [ -f /run/banana/wifi-unloaded ] || exit 0	# no Wi-Fi: nothing to do, at once
+ # one at a time: the lid shut again within a second of a wake ran this pre beside the wake's post (still loading the
+ # driver, wpa_supplicant not started yet), so pre found no wpa.pid, left Wi-Fi marked off, and the next wake didn't
+diff --git a/system/rootfs/etc/init.d/rcK b/system/rootfs/etc/init.d/rcK
+index 3db0e80c..707d3ac0 100755
+--- a/system/rootfs/etc/init.d/rcK
++++ b/system/rootfs/etc/init.d/rcK
+@@ -4,6 +4,15 @@
+ # save and the card is unmounted can't put the handheld to sleep instead of off (bananad itself still runs: it TERMs
+ # a game on its own shutdown and waits for it)
+ touch /run/banana/powering-off 2>/dev/null
++# Qualcomm Wi-Fi teardown takes several seconds. It need not wait for the
++# menu's outro; join it before the data partition is flushed and unmounted.
++NETWORK_PID=
++if [ "$(cat /etc/banana/board 2>/dev/null)" = duolite ]; then
++    ( /usr/libexec/banana/share down 2>/dev/null
++      /usr/libexec/banana/ssh down 2>/dev/null
++      /usr/libexec/banana/wifi down 2>/dev/null ) &
++    NETWORK_PID=$!
++fi
+ # the game's process group first (banana-ui starts each game in its own session; a poweroff over SSH reaches
+ # BananaDS, SuperDrastic and the ports too, and they write their saves), then the menu; waited for until they are
+ # gone, up to 3 s, instead of a second whatever happened
+@@ -24,9 +33,13 @@ done
+ # the unmount, the last half-minute of a recording was lost at every restart)
+ killall bananad 2>/dev/null
+ for i in 1 2 3 4 5 6 7 8 9 10; do pidof bananad >/dev/null || break; sleep 0.1; done
+-/usr/libexec/banana/share down 2>/dev/null     # a computer's open files on the card
+-/usr/libexec/banana/ssh down 2>/dev/null
+-/usr/libexec/banana/wifi down 2>/dev/null
++if [ -n "$NETWORK_PID" ]; then
++    wait "$NETWORK_PID"
++else
++    /usr/libexec/banana/share down 2>/dev/null
++    /usr/libexec/banana/ssh down 2>/dev/null
++    /usr/libexec/banana/wifi down 2>/dev/null
++fi
+ /usr/libexec/banana/bluetooth down 2>/dev/null   # (its pairings saved on the card)
+ hwclock -w 2>/dev/null
+ # the panels' brightness as it is now, for bananad to restore at the next boot ("<top> <bottom>" in thousandths): only
+@@ -49,7 +62,18 @@ else
+     [ -n "$t" ] || t=$b; [ -n "$b" ] || b=$t
+     [ -n "$t" ] && [ "$t $b" != "$old_t $old_b" ] && echo "$t $b" > /data/banana/backlight
+ fi
++if [ -x /usr/libexec/banana/duolite-log-watch ]; then
++    p=$(cat /run/banana/log-watch.pid 2>/dev/null)
++    [ -z "$p" ] || kill "$p" 2>/dev/null
++    [ -f /run/banana/fast-poweroff ] || /usr/libexec/banana/duolite-log-watch --once
++fi
+ /usr/libexec/banana/boot-log off   # the boot's log, complete, whenever the handheld is turned off; the battery noted
++if [ -f /run/banana/early-log.pid ]; then
++    kill "$(cat /run/banana/early-log.pid)" 2>/dev/null
++    sync
++    umount /boot 2>/dev/null
++    umount /run/banana/boot-debug 2>/dev/null
++fi
+ sync
+ umount /data 2>/dev/null || mount -o remount,ro /data
+ sync
+diff --git a/system/rootfs/usr/bin/banana-perf b/system/rootfs/usr/bin/banana-perf
+index 1ecf9a47..7b0dcc72 100755
+--- a/system/rootfs/usr/bin/banana-perf
++++ b/system/rootfs/usr/bin/banana-perf
+@@ -13,12 +13,8 @@
+ # BananaDS's port of it: the lowest clock at which the game drops no frames, per game, through scaling_max_freq,
+ # put back when the game ends); the GPU stays on demand.
+ # (no programs run, only the shell's builtins: it runs at every game's start and end, and each fork cost ~5 ms)
+-CPU=/sys/devices/system/cpu/cpufreq/policy0
+ GPU=
+ for g in /sys/class/devfreq/*.gpu; do [ -e "$g" ] && { GPU=$g; break; }; done
+-[ -d $CPU ] || exit 0
+-read -r freqs < $CPU/scaling_available_frequencies 2>/dev/null
+-read -r lo < $CPU/cpuinfo_min_freq; read -r hi < $CPU/cpuinfo_max_freq
+ # the highest available frequency at or under $1 kHz
+ cap() { best=$lo; for f in $freqs; do [ $f -le $1 ] && [ $f -gt $best ] && best=$f; done; }
+ cpu() {   # cpu <governor> <max kHz> [min kHz]
+@@ -28,12 +24,28 @@ cpu() {   # cpu <governor> <max kHz> [min kHz]
+ }
+ gpu() { [ -n "$GPU" ] && echo $1 > $GPU/governor 2>/dev/null; }
+ case $1 in
+-ui)           cpu schedutil $hi; gpu powersave ;;   # (schedutil: the top clock only while an animation draws)
+-powersave)    cap 1416000; cpu schedutil $best; gpu simple_ondemand ;;
+-balanced)     cpu schedutil $hi; gpu simple_ondemand ;;
+-steady)       cap 1104000; cpu schedutil $hi $best; gpu simple_ondemand ;;
+-performance)  cpu performance $hi; gpu performance ;;
+-superdrastic) cpu performance $hi; gpu simple_ondemand ;;
++ui)           gpu powersave ;;
++powersave|balanced|steady) gpu simple_ondemand ;;
++superdrastic)
++    # Native unequal-panel DS output scales and rotates both frames through
++    # Adreno every refresh. Its short bursts leave ondemand at the minimum.
++    if [ "$(cat /etc/banana/board 2>/dev/null)" = duolite ]; then gpu performance
++    else gpu simple_ondemand; fi ;;
++performance)  gpu performance ;;
+ *) echo "usage: banana-perf ui|powersave|balanced|steady|performance|superdrastic" >&2; exit 1 ;;
+ esac
++# Snapdragon has separate little/big policies. Each needs its own frequency
++# table and hardware limits; touching policy0 alone leaves the big cores in
++# the previous profile. A single-policy RG DS retains the same behavior.
++for CPU in /sys/devices/system/cpu/cpufreq/policy*; do
++    [ -d "$CPU" ] || continue
++    read -r freqs < "$CPU/scaling_available_frequencies" 2>/dev/null
++    read -r lo < "$CPU/cpuinfo_min_freq"; read -r hi < "$CPU/cpuinfo_max_freq"
++    case $1 in
++    ui|balanced) cpu schedutil "$hi" ;;
++    powersave) cap 1416000; cpu schedutil "$best" ;;
++    steady) cap 1104000; cpu schedutil "$hi" "$best" ;;
++    performance|superdrastic) cpu performance "$hi" ;;
++    esac
++done
+ exit 0
+diff --git a/system/rootfs/usr/bin/banana-ui-session b/system/rootfs/usr/bin/banana-ui-session
+index b9247f80..68631f8f 100755
+--- a/system/rootfs/usr/bin/banana-ui-session
++++ b/system/rootfs/usr/bin/banana-ui-session
+@@ -3,6 +3,7 @@
+ # Kernel parameters (extlinux.conf's APPEND, or tools/qemu-boot.sh): banana.console=1 sends the log to the console
+ # (the RG DS's UART, QEMU's serial) instead; banana.top=<connector> names the top panel's connector (DSI-2) and
+ # banana.touch=<device> the bottom panel's touchscreen (part of its sysfs path), for a display other than the RG DS's.
++[ ! -r /etc/banana/hardware.env ] || . /etc/banana/hardware.env
+ LOG=/data/banana/logs/banana-ui.log
+ mkdir -p /data/banana/logs 2>/dev/null && touch $LOG.w 2>/dev/null && rm -f $LOG.w || LOG=/run/banana/banana-ui.log
+ for a in $(cat /proc/cmdline); do
+diff --git a/system/rootfs/usr/libexec/banana/bluetooth b/system/rootfs/usr/libexec/banana/bluetooth
+index e83986a5..15ea1ce0 100755
+--- a/system/rootfs/usr/libexec/banana/bluetooth
++++ b/system/rootfs/usr/libexec/banana/bluetooth
+@@ -21,6 +21,7 @@
+ # /run/banana/bt/hold is there (headphones being called back after a wake, or a codec change) and they aren't yet,
+ # bananad plays nowhere audible instead (the codec, its speaker amplifier off): a game waits quietly, at its pace.
+ RUN=/run/banana
++LOG=${BANANA_BT_LOG:-/dev/null}
+ STORE=/data/banana/bluetooth.tar
+ LAST=/data/banana/bluetooth-audio	# the headphones played last: called back after a wake or a boot
+ HOLD=$RUN/bt/hold
+@@ -77,7 +78,7 @@ bluealsa_start() {
+     else
+         args="$(codec aptX) $(codec FastStream) --sbc-quality=high"
+     fi
+-    bluealsa -S -p a2dp-source --keep-alive=3 --initial-volume=50 --io-rt-priority=25 $args 9>&- </dev/null >/dev/null 2>&1 &
++    bluealsa -S -p a2dp-source --keep-alive=3 --initial-volume=50 --io-rt-priority=25 $args 9>&- </dev/null >>"$LOG" 2>&1 &
+     echo $! > $RUN/bluealsa.pid
+ }
+ 
+@@ -112,6 +113,7 @@ callback() {
+ 
+ up() {
+     running && return 0
++    echo "Bluetooth startup" >> "$LOG"
+     modprobe -a hci_uart hidp 2>/dev/null
+     # hci0 once hci_uart has bound the serdev device (the firmware is loaded when bluetoothd powers it)
+     for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do [ -d /sys/class/bluetooth/hci0 ] && break; sleep 0.25; done
+@@ -133,7 +135,7 @@ up() {
+         dbus-uuidgen --ensure 2>/dev/null
+         dbus-daemon --system 9>&- || return 1
+     fi
+-    /usr/libexec/bluetooth/bluetoothd -n 9>&- </dev/null >/dev/null 2>&1 &
++    /usr/libexec/bluetooth/bluetoothd -n 9>&- </dev/null >>"$LOG" 2>&1 &
+     echo $! > $RUN/bluetoothd.pid
+     # the adapter on the bus (AutoEnable powers it; the firmware download takes a second or two)
+     for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do timeout 2 bluetoothctl show 2>/dev/null | grep -q 'Powered: yes' && break; sleep 0.25; done
+diff --git a/system/rootfs/usr/libexec/banana/one-panel b/system/rootfs/usr/libexec/banana/one-panel
+index a0a5f7eb..2fdc266e 100644
+--- a/system/rootfs/usr/libexec/banana/one-panel
++++ b/system/rootfs/usr/libexec/banana/one-panel
+@@ -6,6 +6,13 @@
+ ONE_PANEL_BL=
+ one_panel_dark() {
+     local DT=/proc/device-tree DSI PH b
++    if [ "$(cat /etc/banana/board 2>/dev/null)" = duolite ]; then
++        case $1 in top) ONE_PANEL_BL=/sys/class/backlight/serial0-0 ;; *) ONE_PANEL_BL=/sys/class/backlight/backlight ;; esac
++        [ -w "$ONE_PANEL_BL/bl_power" ] || { ONE_PANEL_BL=; return 0; }
++        echo 4 > "$ONE_PANEL_BL/bl_power"
++        echo "$ONE_PANEL_BL" > /run/banana/panel-off
++        return 0
++    fi
+     case $1 in top) DSI=fe060000 ;; *) DSI=fe070000 ;; esac
+     PH=$(od -An -tx1 $DT/dsi@$DSI/panel@0/backlight 2>/dev/null | tr -d ' \n')
+     ONE_PANEL_BL=
+diff --git a/system/rootfs/usr/libexec/banana/run-activity b/system/rootfs/usr/libexec/banana/run-activity
+index 1bbe7ff6..e2886098 100755
+--- a/system/rootfs/usr/libexec/banana/run-activity
++++ b/system/rootfs/usr/libexec/banana/run-activity
+@@ -5,4 +5,7 @@
+ L=/data/banana/logs/activity.log
+ mkdir -p /data/banana/logs
+ [ -f $L ] && [ "$(wc -c < $L)" -gt 262144 ] && mv -f $L $L.1
++if [ "$(cat /etc/banana/board 2>/dev/null)" = duolite ]; then
++    exec /usr/bin/banana-activity --connector "${BANANA_TOP:-DSI-1}" --top-rotation "${BANANA_TOP_ROTATION:-270}" >> $L 2>&1
++fi
+ exec /usr/bin/banana-activity >> $L 2>&1
+diff --git a/system/rootfs/usr/libexec/banana/run-bananads b/system/rootfs/usr/libexec/banana/run-bananads
+index e2b934ce..cfabad4f 100755
+--- a/system/rootfs/usr/libexec/banana/run-bananads
++++ b/system/rootfs/usr/libexec/banana/run-bananads
+@@ -98,6 +98,9 @@ ll=$(sed -n '/^ *kms\.lowlat *= */{s///;h};${x;p}' $C 2>/dev/null)
+ case $ll in runahead*) sed -i 's/^ *kms\.lowlat *=.*/kms.lowlat = on/' $C; ll=on ;; esac
+ [ -n "$ll" ] && [ "$ll" != off ] && echo "run-bananads: low latency (experimental): $ll" >&2
+ export DSFLIP_SHADER_DIR=/usr/lib/superdrastic/shaders
++if [ "$(cat /etc/banana/board 2>/dev/null)" = duolite ]; then
++    export DSFLIP_SHADER_DIR=/usr/share/banana/duolite
++fi
+ # Mesa's shader cache on the card (kms.shader's program, compiled once instead of at every start): BananaDS gets
+ # banana-ui's HOME, /, read-only, so it had none (DraStic's and RetroArch's are under their own HOME)
+ export MESA_SHADER_CACHE_DIR=$D/.cache
+@@ -145,7 +148,12 @@ else s=$(sed -n '/^ *kms.shader *= */{s///;h};${x;p}' $C 2>/dev/null); fi
+ # a shader of your own (banana/shaders/<name>.frag, listed in Settings as "<name> (card)"): its folder instead
+ [ -n "$s" ] && [ -f "/data/banana/shaders/$s.frag" ] && export DSFLIP_SHADER_DIR=/data/banana/shaders
+ # the 3D always through the Gengis Engine (SuperDrastic's rasterizer), as SuperDrastic does
+-export BANANADS_RENDER_RENDERER=gengis
++if [ "$(cat /etc/banana/board 2>/dev/null)" = duolite ]; then
++    export BANANADS_RENDER_RENDERER=gengis BANANADS_RENDER_2D=banana
++    export DSFLIP_SHADER_DIR=/usr/share/banana/duolite
++else
++    export BANANADS_RENDER_RENDERER=gengis
++fi
+ # Settings > Nintendo DS > Quick resume (settings.conf's quick_resume): off, a quit ends the game and the next start
+ # is from its title (no resume state written or loaded); bananad's SIGUSR1 (Power off after sleeping) still writes one,
+ # loaded at the boot after it
+diff --git a/system/rootfs/usr/libexec/banana/run-dodakvarter b/system/rootfs/usr/libexec/banana/run-dodakvarter
+index 3dc3d3f7..762b4599 100755
+--- a/system/rootfs/usr/libexec/banana/run-dodakvarter
++++ b/system/rootfs/usr/libexec/banana/run-dodakvarter
+@@ -3,6 +3,10 @@
+ # the run in progress on the card (they survive updates). banana-ui has let go of the panels.
+ #   run-dodakvarter [entry]
+ export DK_DATA=/data/apps/dodakvarter
++export DK_TOP=${BANANA_TOP:-DSI-2} DK_TOUCH_BOTTOM=${BANANA_TOUCH:-fe5e0000.i2c}
++if [ "$(cat /etc/banana/board 2>/dev/null)" = duolite ]; then
++    export DK_TOP_ROTATION=${BANANA_TOP_ROTATION:-270}
++fi
+ mkdir -p $DK_DATA
+ cd $DK_DATA
+ exec /usr/bin/dodakvarter --backend kms
+diff --git a/system/rootfs/usr/libexec/banana/run-nds b/system/rootfs/usr/libexec/banana/run-nds
+index de1fe5bd..cbbccf7b 100755
+--- a/system/rootfs/usr/libexec/banana/run-nds
++++ b/system/rootfs/usr/libexec/banana/run-nds
+@@ -29,6 +29,8 @@ case $want in
+ bananads|superdrastic) ;;
+ *) want=superdrastic ;;
+ esac
++# Initial Duo Lite image installs BananaDS only.
++[ "$(cat /etc/banana/board 2>/dev/null)" != duolite ] || want=bananads
+ case $want in
+ bananads) exec /usr/libexec/banana/run-bananads "$1" ;;
+ *) exec /usr/libexec/banana/run-drastic "$1" ;;
+diff --git a/system/rootfs/usr/libexec/banana/run-port b/system/rootfs/usr/libexec/banana/run-port
+index 8261c9ab..decfe027 100755
+--- a/system/rootfs/usr/libexec/banana/run-port
++++ b/system/rootfs/usr/libexec/banana/run-port
+@@ -9,7 +9,7 @@ P=/data/roms/ports
+ # BananaOS's hook for ports (mod_<CFW_NAME>.txt, sourced by each port's script): the pad's GUID for get_controls,
+ # without which every port quit at once ("Argument list too long"). Put back each time: PortMaster updates itself.
+ M=/usr/share/banana/portmaster/mod_BananaOS.txt
+-if [ -d $P/PortMaster ] && ! cmp -s $M $P/PortMaster/mod_BananaOS.txt; then
++if [ "$(cat /etc/banana/board 2>/dev/null)" != duolite ] && [ -d $P/PortMaster ] && ! cmp -s $M $P/PortMaster/mod_BananaOS.txt; then
+     cat $M > $P/PortMaster/mod_BananaOS.txt && echo "mod_BananaOS.txt put in PortMaster's folder"
+ fi
+ export HOME=/data/home XDG_DATA_HOME=/data/home/.local/share XDG_CONFIG_HOME=/data/home/.config XDG_RUNTIME_DIR=/run
+@@ -23,6 +23,16 @@ export PYSDL2_DLL_PATH=/usr/lib
+ # default), so the menu's SDL fell back to the offscreen driver and drew nowhere: a black screen. Master is taken when
+ # the window is made, once the splash has gone.
+ export SDL_KMSDRM_REQUIRE_DRM_MASTER=0
++if [ "$(cat /etc/banana/board 2>/dev/null)" = duolite ]; then
++    if [ "$1" = "$P/PortMaster.sh" ]; then
++        export PATH=/usr/share/banana/portmaster/bin:$PATH
++    fi
++    export SDL_VIDEODRIVER=offscreen SDL_BANANA_PANELS=top
++    export SDL_BANANA_TOP=${BANANA_TOP:-DSI-1} SDL_BANANA_TOP_ROTATION=${BANANA_TOP_ROTATION:-270}
++    export SDL_BANANA_READBACK=1 EGL_PLATFORM=surfaceless
++    export LOVE_GRAPHICS_USE_OPENGLES=1
++    export MESA_SHADER_CACHE_DIR=/data/home/.cache/mesa_shader_cache
++fi
+ . /usr/libexec/banana/one-panel
+ one_panel_dark top
+ cd "$(dirname "$1")"
+diff --git a/system/rootfs/usr/libexec/banana/run-ps1 b/system/rootfs/usr/libexec/banana/run-ps1
+index b02c6016..924f0300 100755
+--- a/system/rootfs/usr/libexec/banana/run-ps1
++++ b/system/rootfs/usr/libexec/banana/run-ps1
+@@ -4,6 +4,9 @@
+ # launcher only sets what the core needs on the RK3566/68 and hands over.
+ #   run-ps1 <rom>
+ [ -f /usr/lib/libretro/pcsx_rearmed_libretro.so ] || { echo "PCSX-ReArmed isn't installed" >&2; exit 1; }
++if [ "$(cat /etc/banana/board 2>/dev/null)" = duolite ]; then
++    exec /usr/libexec/banana/run-retroarch pcsx_rearmed "$1"
++fi
+ R=/data/retroarch
+ C=PCSX-ReARMed
+ mkdir -p "$R/config/$C"
+diff --git a/system/rootfs/usr/libexec/banana/run-retroarch b/system/rootfs/usr/libexec/banana/run-retroarch
+index 155edc6f..b3dca18b 100755
+--- a/system/rootfs/usr/libexec/banana/run-retroarch
++++ b/system/rootfs/usr/libexec/banana/run-retroarch
+@@ -43,6 +43,10 @@ if [ -n "$BANANA_SYSTEM" ]; then
+     done
+ fi
+ [ -f "$CORE" ] || { echo "no core $1" >&2; exit 1; }
++# Native unequal panels use the OS KMS profile, without rewriting the card's RetroArch configuration.
++if [ "$(cat /etc/banana/board 2>/dev/null)" = duolite ]; then
++    exec /usr/libexec/banana/run-retroarch-duolite "$CORE" "$2"
++fi
+ # the core that really runs, in banana-ui's log (its "starting" line names systems.conf's)
+ c=${CORE##*/}; c=${c%_libretro.so}
+ [ "$c" != "$1" ] && echo "run-retroarch: core $c (Settings > Other systems), not $1" >&2 || echo "run-retroarch: core $c" >&2
+diff --git a/system/rootfs/usr/libexec/banana/run-store b/system/rootfs/usr/libexec/banana/run-store
+index b069c851..be7490be 100755
+--- a/system/rootfs/usr/libexec/banana/run-store
++++ b/system/rootfs/usr/libexec/banana/run-store
+@@ -9,4 +9,13 @@ mkdir -p $S/data $S/apps $S/tiles
+ cd $S
+ export DK_DATA=$S/data DK_TOP=${BANANA_TOP:-DSI-2} DK_TOUCH_BOTTOM=${BANANA_TOUCH:-fe5e0000.i2c}
+ export RNDS_STORE_CLI=/usr/share/banana/apps/store/rocknixds-store RNDS_STORE_DATA=$S/data RNDS_STORE_PLATFORM=banana
++if [ "$(cat /etc/banana/board 2>/dev/null)" = duolite ]; then
++    export DK_TOP_ROTATION=${BANANA_TOP_ROTATION:-270} RNDS_STORE_DEVICE=duolite
++    # Until individual apps are ported, use this firmware's compatibility list.
++    export RNDS_STORE_CATALOG=file:///usr/share/banana/apps/store/catalog-duolite.json
++    # A previous firmware's cached compatibility list must not keep rejecting
++    # newly ported apps until the online metadata refresh finishes.
++    cp /usr/share/banana/apps/store/catalog-duolite.json "$S/data/catalog.json.new" &&
++        mv -f "$S/data/catalog.json.new" "$S/data/catalog.json"
++fi
+ exec /usr/bin/rocknixds-store-ui --backend kms
+diff --git a/system/rootfs/usr/libexec/banana/ssh b/system/rootfs/usr/libexec/banana/ssh
+index 12f1aaed..c4ef6d8b 100755
+--- a/system/rootfs/usr/libexec/banana/ssh
++++ b/system/rootfs/usr/libexec/banana/ssh
+@@ -14,7 +14,11 @@ up)
+     cp $D/authorized_keys $R/authorized_keys
+     chmod 600 $R/authorized_keys
+     [ -s $D/host_key_ed25519 ] || dropbearkey -t ed25519 -f $D/host_key_ed25519 >/dev/null 2>&1 || exit 1
+-    dropbear -s -r $D/host_key_ed25519 -P /run/banana/dropbear.pid
++    if [ "$(cat /etc/banana/board 2>/dev/null)" = duolite ]; then
++        dropbear -r $D/host_key_ed25519 -P /run/banana/dropbear.pid
++    else
++        dropbear -s -r $D/host_key_ed25519 -P /run/banana/dropbear.pid
++    fi
+     ;;
+ down)
+     [ -f /run/banana/dropbear.pid ] && kill $(cat /run/banana/dropbear.pid) 2>/dev/null
+diff --git a/system/rootfs/usr/libexec/banana/update b/system/rootfs/usr/libexec/banana/update
+index 07f534f3..5190104f 100755
+--- a/system/rootfs/usr/libexec/banana/update
++++ b/system/rootfs/usr/libexec/banana/update
+@@ -50,6 +50,13 @@ BETA=$UPDATES/.beta
+ CHOSEN=$UPDATES/.channel      # "github": the beta channel turned off with its password kept
+ CHANNEL=github; SRC=GitHub
+ [ -s "$BETA" ] && [ "$(cat $CHOSEN 2>/dev/null)" != github ] && { CHANNEL=beta; SRC="the beta server"; FEED=$BETA_FEED; }
++# Duo Lite releases have their own version sequence and use public GitHub
++# prereleases; never send this board to the RG DS beta server.
++if [ "$BOARD" = duolite ]; then
++    VERSION=${BANANA_VERSION:-$(cat /etc/banana/release 2>/dev/null)}
++    FEED=${BANANA_UPDATE_FEED:-https://api.github.com/repos/rzrbld/bananaos_duo/releases?per_page=20}
++    CHANNEL=github; SRC=GitHub
++fi
+ PARTIAL=$UPDATES/.partial
+ DL=$RUN/update-download
+ other() { [ "$1" = a ] && echo b || echo a; }
+@@ -143,6 +150,12 @@ net_error() {
+     esac
+ }
+ 
++# Same download, checksum and inactive-root writer; OpenABL uses BLS instead
++# of the RG DS extlinux boot entries.
++if [ "$BOARD" = duolite ]; then
++    . "${BANANA_UPDATE_BOOT_HELPER:-/usr/libexec/banana/update-duolite-boot}"
++fi
++
+ case $1 in
+ list)
+     mkdir -p $UPDATES 2>/dev/null
+@@ -154,6 +167,7 @@ list)
+         rgds-plus-*) b=rgds-plus; v=${n#rgds-plus-} ;;
+         universal-*) b=universal; v=${n#universal-} ;;
+         rgds-*) b=rgds; v=${n#rgds-} ;;
++        duolite-*) b=duolite; v=${n#duolite-} ;;
+         *) b=?; v=$n ;;
+         esac
+         printf '%s\t%s\t%s\n' "$p" "$v" "$b"
+@@ -168,6 +182,8 @@ status)
+ switch)
+     install_lock
+     to=${2:-$(other $SLOT)}
++    if [ "$BOARD" = duolite ]; then duolite_guard; duolite_prepare; fi
++    case $to in a|b) ;; *) fail "invalid slot: $to" ;; esac
+     [ -f /boot/$to/Image ] || fail "slot $to holds no system"
+     set_default $to
+     status "switched $to"
+@@ -175,6 +191,7 @@ switch)
+     ;;
+ apply)
+     install_lock
++    [ "$BOARD" != duolite ] || duolite_guard
+     P=$2
+     [ -e "$P" ] || fail "no such package: $P"
+     status "checking"
+@@ -189,6 +206,9 @@ apply)
+     for f in Image rootfs.squashfs VERSION board sha256sums; do [ -f "$DIR/$f" ] || fail "the package has no $f"; done
+     DTB=$(ls "$DIR"/*.dtb 2>/dev/null | head -n 1); [ -n "$DTB" ] || fail "the package has no device tree"
+     PB=$(cat "$DIR/board"); PV=$(cat "$DIR/VERSION")
++    if [ "$BOARD" = duolite ]; then
++        [ "$PB" = duolite ] && [ "${DTB##*/}" = sm6125-retroid-pocket-duo-lite.dtb ] || fail "Duo Lite requires its own kernel, root and device tree package"
++    fi
+     # a universal package fits any card (it has this handheld's device tree too; a card made for one handheld names
+     # its device tree in extlinux.conf, which the package keeps the name of)
+     [ -z "$BOARD" ] || [ "$PB" = "$BOARD" ] || [ "$PB" = universal ] || fail "that is a package for the $PB, this is the $BOARD"
+@@ -225,6 +245,7 @@ apply)
+     SIZE=$(wc -c < "$DIR/rootfs.squashfs")
+     LIMIT=$(( $(cat /sys/class/block/${PART##*/}/size) * 512 ))
+     [ "$SIZE" -le "$LIMIT" ] || fail "the system ($SIZE bytes) doesn't fit the slot ($LIMIT bytes)"
++    [ "$BOARD" != duolite ] || duolite_prepare
+     # the slot about to be written isn't a system until its root, kernel and device tree are whole again: not the
+     # default (a second apply before the restart writes the slot the first one made the default: cut off, the next
+     # boot ran half a system, with no menu to pick another) and no kernel (Previous version, update switch, only goes to
+@@ -254,6 +275,11 @@ apply)
+     # device trees the package doesn't have would be old ones: they go
+     for f in /boot/$TO/*.dtb; do [ -f "$DIR/$(basename "$f")" ] || rm -f "$f"; done
+     boot_ro
++    if [ "$BOARD" = duolite ]; then
++        boot_rw
++        printf '%s\n' "$PV" > /boot/$TO/VERSION.new && sync && mv -f /boot/$TO/VERSION.new /boot/$TO/VERSION || fail "can't record slot version"
++        boot_ro
++    fi
+     set_default $TO
+     rm -f $DATA/panel-tune.txt      # the new device tree is tuned on its first boot
+     [ -d "$UPDATES/.unpack" ] && rm -rf "$UPDATES/.unpack"
+@@ -275,6 +301,7 @@ check)
+     # (the beta channel's builds are all test versions: counted whatever Test versions says)
+     [ $CHANNEL = beta ] && pre=on
+     feed=$UPDATES/.feed.json; etag=$UPDATES/.feed.etag; hdr=$RUN/update-feed.hdr
++    [ "$BOARD" != duolite ] || { feed=$UPDATES/.feed-duolite.json; etag=$UPDATES/.feed-duolite.etag; }
+     [ $CHANNEL = beta ] && { feed=$UPDATES/.feed-beta.json; etag=$UPDATES/.feed-beta.etag; }
+     now=$(date +%s); fetched=$(num "$(field fetched)"); checked=$(num "$(field checked)"); err=
+     [ "$(lastchan)" = $CHANNEL ] || fetched=     # the other channel's list: asked again
+diff --git a/system/rootfs/usr/libexec/banana/wifi b/system/rootfs/usr/libexec/banana/wifi
+index 7bd0a08c..096962b8 100755
+--- a/system/rootfs/usr/libexec/banana/wifi
++++ b/system/rootfs/usr/libexec/banana/wifi
+@@ -25,8 +25,13 @@ running() { $W ping 2>/dev/null | grep -q PONG; }	# whether one answers, pid fil
+ # the wpa_cli running this script on events (also one whose pid file wasn't written yet when a down came)
+ actions() { for p in $(pidof wpa_cli); do tr '\0' ' ' < /proc/$p/cmdline 2>/dev/null | grep -q " -a /usr/libexec/banana/wifi " && echo $p; done; }
+ up() {
+-    for i in 1 2 3 4 5 6 7 8 9 10; do [ -d /sys/class/net/wlan0 ] && break; sleep 0.5; done
+-    [ -d /sys/class/net/wlan0 ] || return 1
++    # Qualcomm remoteproc/firmware may initialize well after init starts.
++    wait=${BANANA_WIFI_WAIT_SECONDS:-5}
++    case $wait in ''|*[!0-9]*) wait=5 ;; esac
++    [ "$wait" -le 120 ] || wait=120
++    i=0
++    while [ ! -d /sys/class/net/wlan0 ] && [ "$i" -lt "$wait" ]; do sleep 1; i=$((i + 1)); done
++    [ -d /sys/class/net/wlan0 ] || { echo "Wi-Fi: wlan0 missing after ${wait}s" >&2; return 1; }
+     if running; then
+         pidof wpa_supplicant > /run/banana/wpa.pid
+         [ -n "$(actions)" ] || $W -a /usr/libexec/banana/wifi -B -P /run/banana/wpa_cli.pid 9>&-
+@@ -34,6 +39,7 @@ up() {
+     fi
+     # with no known network in reach, scans back off from every 3 s to every 5 min (the radio mostly asleep)
+     { echo "ctrl_interface=$CTRL"; echo "update_config=0"; echo "autoscan=exponential:3:300"; [ -f $CONF ] && cat $CONF; } > /run/banana/wpa.conf
++    chmod 600 /run/banana/wpa.conf
+     ip link set wlan0 up
+     wpa_supplicant -B -i wlan0 -c /run/banana/wpa.conf -P /run/banana/wpa.pid 9>&- || return 1
+     $W -a /usr/libexec/banana/wifi -B -P /run/banana/wpa_cli.pid 9>&-
+@@ -104,7 +110,7 @@ wlan0)
+     CONNECTED)
+         stop /run/banana/udhcpc.pid
+         # (time-synced: the clock came from the network this boot, for wifi test)
+-        udhcpc -b -t 5 -i wlan0 -p /run/banana/udhcpc.pid -s /usr/share/udhcpc/default.script >/dev/null 2>&1 &&
++        udhcpc -b -t 5 -i wlan0 -p /run/banana/udhcpc.pid -s /usr/share/udhcpc/default.script >"${BANANA_WIFI_DHCP_LOG:-/dev/null}" 2>&1 &&
+             { ntpd -q -n -p pool.ntp.org >/dev/null 2>&1 && { hwclock -w 2>/dev/null; date +%s > /run/banana/time-synced; }; } &
+         # Settings > System > Updates > Update check: Daily asks GitHub for a newer version, once a day at most (the update
+         # script reads the setting itself; nothing is downloaded). After the clock had its chance: TLS needs it
+diff --git a/system/rootfs/usr/share/banana/portmaster/mod_BananaOS.txt b/system/rootfs/usr/share/banana/portmaster/mod_BananaOS.txt
+index 15acf19b..6907046b 100644
+--- a/system/rootfs/usr/share/banana/portmaster/mod_BananaOS.txt
++++ b/system/rootfs/usr/share/banana/portmaster/mod_BananaOS.txt
+@@ -13,14 +13,40 @@
+ # list too long": a black screen and back to the menu. The RG DS / RG DS Plus pad is retrogame_joypad, whose line
+ # is already in the database under this GUID.
+ BANANA_PAD_GUID="190000004b4800000111000000010000"
++BANANA_DUOLITE=
++if [ "$(cat /etc/banana/board 2>/dev/null)" = duolite ]; then
++    BANANA_DUOLITE=1
++    BANANA_PAD_GUID="0300bb1b242f00000100000001000000"
++    export DISPLAY_WIDTH=1920 DISPLAY_HEIGHT=1080 DISPLAY_ORIENTATION=0 ASPECT_X=16 ASPECT_Y=9
++    export ANALOG_STICKS=2 ANALOGSTICKS=2 ANALOG_TRIGGERS=N DEVICE_ARCH=aarch64
++    export DEVICE_CPU=SM6125 GPU_DRIVER=freedreno GPU_DRIVER_VERSION=26.3.1
++    # Replace only display capability tokens; retain detected RAM/architecture.
++    _banana_caps=
++    for _c in $DEVICE_CAPABILITIES; do
++        case $_c in *x[0-9]*|[0-9]*:[0-9]*|wide|square|lowres|hires) ;; *) _banana_caps="$_banana_caps $_c" ;; esac
++    done
++    export DEVICE_CAPABILITIES="$_banana_caps 1920x1080 16:9 wide hires"
++    if declare -f save_device_info >/dev/null && [ -n "$CACHED_ENV" ]; then save_device_info "$CACHED_ENV"; fi
++fi
+ 
+ if declare -f get_controls >/dev/null 2>&1; then
+     eval "_banana_get_controls_orig() $(declare -f get_controls | tail -n +2)"
+ 
+     get_controls() {
++        if [ -n "$BANANA_DUOLITE" ]; then
++            export DEVICE="$BANANA_PAD_GUID" param_device=duolite HOTKEY=back ANALOGSTICKS=2 LOWRES=N
++            # RetroArch reads the native controller itself; keyboard-only
++            # ports retain their upstream mapper and per-game key bindings.
++            export GPTOKEYB="/usr/libexec/banana/port-keyboard $controlfolder/gptokeyb $ESUDOKILL"
++            export SDL_GAMECONTROLLERCONFIG_FILE=/usr/share/banana/portmaster/gamecontrollerdb-duolite.txt
++            sdl_controllerconfig="$(cat "$SDL_GAMECONTROLLERCONFIG_FILE")"
++            export SDL_GAMECONTROLLERCONFIG="$sdl_controllerconfig"
++            return 0
++        fi
+         _banana_get_controls_orig "${1:-$BANANA_PAD_GUID}" "${2:-rgds}"
+         # a pad the database doesn't know: SDL reads SDL_GAMECONTROLLERCONFIG_FILE instead
+         [ "${#sdl_controllerconfig}" -gt 100000 ] && sdl_controllerconfig=""
++        return 0
+     }
+ fi
+ 
+diff --git a/ui/Makefile b/ui/Makefile
+index e282ab1d..4ffd95de 100644
+--- a/ui/Makefile
++++ b/ui/Makefile
+@@ -39,8 +39,17 @@ $(RC_DIR)/%.o: $(RC)/src/%.c $(wildcard $(RC)/include/*.h $(RC)/src/*.h $(RC)/sr
+ 	$(CC) $(CFLAGS) -O2 -I$(RC)/include -w -c -o $@ $<
+ UI_FLAGS += -I$(RC)/include
+ 
+-banana-ui: $(SRC) $(wildcard src/*.h src/fetch/*.h rnds/*.h) $(RC_OBJ)
+-	$(CXX) $(CXXFLAGS) $(UI_FLAGS) $(LDFLAGS) -o $@ $(SRC) $(RC_OBJ) $(UI_LIBS) $(LDLIBS)
++STOCK_MENU = third_party/banana_menu
++STOCK_SRC = $(STOCK_MENU)/menu.c $(STOCK_MENU)/lang.c $(STOCK_MENU)/ra_compat.c
++STOCK_DIR = stock-menu-obj/$(notdir $(CC))
++STOCK_OBJ = $(patsubst $(STOCK_MENU)/%.c,$(STOCK_DIR)/%.o,$(STOCK_SRC))
++$(STOCK_DIR)/%.o: $(STOCK_MENU)/%.c $(wildcard $(STOCK_MENU)/*.h)
++	@mkdir -p $(dir $@)
++	$(CC) $(CFLAGS) -O2 -I$(STOCK_MENU) -c -o $@ $<
++SRC += src/original_game_menu.cpp
++
++banana-ui: $(STOCK_OBJ) $(SRC) $(wildcard src/*.h src/fetch/*.h rnds/*.h) $(RC_OBJ)
++	$(CXX) $(CXXFLAGS) $(UI_FLAGS) $(LDFLAGS) -o $@ $(SRC) $(RC_OBJ) $(STOCK_OBJ) $(UI_LIBS) $(LDLIBS)
+ 
+ # box art, title screens, genres and years from libretro's free collections (Settings and the first-time setup)
+ banana-scrape: src/scrape.cpp
+@@ -85,6 +94,18 @@ libasound_module_pcm_banana_eq.so: src/eq/pcm_banana_eq.c src/eq/eq.h
+ host:
+ 	$(MAKE) ALSA=0 banana-ui
+ 
++tests/plane-selection-test: tests/plane-selection-test.cpp src/plane-selection.h
++	$(CXX) $(CXXFLAGS) -Isrc -o $@ $<
++
++tests/scanout-test: tests/scanout-test.cpp src/scanout.h
++	$(CXX) $(CXXFLAGS) -Isrc -o $@ $<
++
++tests/splash-test: tests/splash-test.cpp src/splash.cpp src/splash.h src/scanout.h rnds/RndsRaster.cpp rnds/RndsUI.cpp
++	$(CXX) $(CXXFLAGS) -ffunction-sections -fdata-sections -Wl,--gc-sections -Isrc \
++		$(shell $(PKG_CONFIG) --cflags freetype2) $(LDFLAGS) -o $@ \
++		tests/splash-test.cpp src/splash.cpp rnds/RndsRaster.cpp rnds/RndsUI.cpp \
++		$(shell $(PKG_CONFIG) --libs freetype2) -lpthread
++
+ # the Pokémon companion's decoder on data made from the documented layouts (tests/run.sh runs it)
+ tests/pokemon-test: tests/pokemon-test.cpp src/pokemon.cpp src/pokemap.cpp src/pokemon.h src/zip.cpp src/zipdir.cpp
+ 	$(CXX) $(CXXFLAGS) -Isrc -o $@ tests/pokemon-test.cpp src/pokemon.cpp src/pokemap.cpp src/zip.cpp src/zipdir.cpp -lz -lpthread
+@@ -147,6 +168,7 @@ install:
+ 	touch $(DESTDIR)/usr/share/banana/apps/files/Files.app
+ 
+ clean:
++	rm -f tests/scanout-test tests/splash-test tests/plane-selection-test
+ 	rm -rf rc-obj
+ 	rm -f banana-ui banana-leaseshim.so libasound_module_pcm_banana_eq.so banana-scrape banana-sync banana-bshare banana-fetch tests/pokemon-test tests/gamecomp-test tests/input-test tests/wav-test tests/eq-test tests/lang-raw-test tests/lang-test tests/complink-test tests/nds-pages-test tests/nds-rom-test tests/nds-rom-dump tests/nds-ram-test tests/nds-logic-test tests/nds-romfile-test tests/nds-townmap-test tests/gba-live-test tests/gba-pages-test tests/gba-rom-test tests/gba-items-gen tests/soft-base-test tests/gba-exp-test tests/gba-expitems-gen tests/gba-hidden-items tests/ach-test
+ 
+diff --git a/ui/rnds/RndsUI.cpp b/ui/rnds/RndsUI.cpp
+index d9eeb177..08fe51d4 100644
+--- a/ui/rnds/RndsUI.cpp
++++ b/ui/rnds/RndsUI.cpp
+@@ -513,13 +513,18 @@ namespace rnds
+ 				}
+ 			// a user theme's pictures behind the screens, at the screens' device size
+ 			int sw = (int)std::lround(640 * s), sh = (int)std::lround(480 * s);
+-			if (!themeFiles.wallTop.empty()) if (Bitmap b = decodeFile(themeFiles.wallTop); !b.empty()) wallTop = resize(b, sw, sh);
++			if (!themeFiles.wallTop.empty()) if (Bitmap b = decodeFile(themeFiles.wallTop); !b.empty()) wallTop = resize(b, be->screenWidth(0) > 0 ? be->screenWidth(0) : sw, sh);
+ 			if (!themeFiles.wallBottom.empty()) if (Bitmap b = decodeFile(themeFiles.wallBottom); !b.empty()) wallBottom = resize(b, sw, sh);
+ 			tintAccent(logo);
+ 			wifi = loadPng("wifi" + sfx);
+ 			batt = loadPng("battery" + sfx);
+ 			consoleDark = loadPng("console-dark" + sfx);
+ 			consoleLight = loadPng("console-light" + sfx);
++			// The packaged art is 1x/1.6x; the slot and cartridge use the
++			// actual panel scale (2x on Duo Lite). Keep their axes aligned.
++			for (Bitmap* console : { &consoleDark, &consoleLight })
++				if (!console->empty()) *console = resize(*console,
++					(int)std::lround(560 * s), (int)std::lround(172 * s));
+ 		}
+ 
+ 		// ---- boxes ----
+@@ -1374,9 +1379,12 @@ namespace rnds
+ 			b.shadows = { inset(0, 6, 0, P.sheetHi), inset(0, -8, 0, P.sheetLo), outer(4, 4, SHADE40) };
+ 			return b;
+ 		}
++		float topWidth() const { int w = be->screenWidth(0); return w > 0 ? w / s : 640.0f; }
++
+ 		void drawSheet(const Color& accent, float x, float y)
+ 		{
+-			Sprite m = mask(18, 604, 406), o = box(sheetOverlay(), 604, 406);
++			float w = topWidth() - 36;
++			Sprite m = mask(18, w, 406), o = box(sheetOverlay(), w, 406);
+ 			if (!m.valid() || !o.valid()) return;
+ 			drawSprite(m, x, y, nullptr, mix(accent, P.sheetMix, P.sheetBase));
+ 			drawSprite(o, x, y);
+@@ -1573,12 +1581,16 @@ namespace rnds
+ 			}
+ 			else if (!batt.empty() && !bmode.empty())
+ 				battery(44);
+-			drawBox(brandBox(), brandX, 19 + ry, 148.23f, 26);
++			float brandW = logo.empty() ? 148.23f : std::round(logo.w / s + 14);
++			drawBox(brandBox(), brandX, 19 + ry, brandW, 26);
++			std::string clock = src->clockText(), date = src->dateText();
++			float cw = line(clock, ts(true, 20)).width, dw = line(date, ts(false, 20)).width;
++			float noteEnd = topWidth() - 18 - cw - 8 - dw - 12;
+ 			if (!brandNote.empty())
+ 			{
+ 				// what this build is: the release stage as a badge in the accent (the START plate's bands, the menu's
+ 				// shadow), its word in capitals in the ink that reads on the accent, then the version ("BETA 0.5.0")
+-				float nx = brandX + 148.23f + 10;
++				float nx = brandX + brandW + 10;
+ 				size_t sp = brandNote.find(' ');
+ 				std::string stage = sp == std::string::npos ? "" : brandNote.substr(0, sp);
+ 				std::string ver = sp == std::string::npos ? brandNote : brandNote.substr(sp + 1);
+@@ -1593,22 +1605,21 @@ namespace rnds
+ 					drawText(stage, bt, nx + 8, 23 + ry, Color::hex(inkOn(accent.base)));
+ 					nx += bw + 8;
+ 				}
+-				drawText(ver, ts(true, 18), nx, 22 + ry, INK);
++				if (noteEnd > nx)
++					drawFit(ver, ts(true, 18), nx, 22 + ry, 18, noteEnd - nx, INK, false);
+ 			}
+ 			if (!logo.empty())
+ 				drawSprite(still("logo", logo, true), brandX + 7, 22 + ry);
+ 
+-			std::string clock = src->clockText(), date = src->dateText();
+-			float cw = line(clock, ts(true, 20)).width, dw = line(date, ts(false, 20)).width;
+-			drawText(clock, ts(true, 20), 622 - cw, 20 + ry, INK);
+-			drawText(date, ts(false, 20), 622 - cw - 8 - dw, 20 + ry, INK);
++			drawText(clock, ts(true, 20), topWidth() - 18 - cw, 20 + ry, INK);
++			drawText(date, ts(false, 20), topWidth() - 18 - cw - 8 - dw, 20 + ry, INK);
+ 		}
+ 
+ 		// the game list's top screen, left: the box cover in a pixel frame, bobbing like the home screen's icon, its
+ 		// shadow on the sheet and a shine that sweeps over it every few seconds
+ 		void drawCover(const GameInfo& gm, const SysInfo& sy, float ry)
+ 		{
+-			const float cx = 163, cy = 263;		// the cover's centre at rest
++			const float cx = topWidth() / 4 + 3, cy = 263;		// the cover's centre at rest
+ 			CacheEntry* ce = coverArt(gm.box);
+ 			bool pending = ce == nullptr && !gm.box.empty();
+ 			if (ce && !ce->sp.valid()) ce = nullptr;
+@@ -1662,7 +1673,7 @@ namespace rnds
+ 		// the game list's top screen, right: title, genre and year, the play stats and the achievements
+ 		void drawGameInfo(const GameInfo& gm, const SysInfo& sy, float ry)
+ 		{
+-			const float L = 300, W = 296;
++			const float L = topWidth() / 2 - 20, W = topWidth() - L - 44;
+ 			TStyle tt = ts(true, 26, 0.52f), tsb = ts(false, 20);
+ 			// the title on as many lines as it needs, up to TITLE_LINES (a long one was cut at two with room to spare)
+ 			const int TITLE_LINES = 4;
+@@ -1767,7 +1778,7 @@ namespace rnds
+ 		// the left holds the system's icon, as drawCover draws it without a cover)
+ 		void drawEmpty(float ry)
+ 		{
+-			const float L = 300, W = 296;
++			const float L = topWidth() / 2 - 20, W = topWidth() - L - 44;
+ 			TStyle tt = ts(true, 26, 0.52f), th = ts(false, 20);
+ 			std::vector<TextLine> tl = layoutWrap(utf8to32(src->emptyTitle()), tstyle(tt), (int)W, 2), hl;
+ 			std::string hint = src->emptyHint();
+@@ -1785,7 +1796,7 @@ namespace rnds
+ 		{
+ 			be->beginScreen(0);
+ 			if (!wallTop.empty()) drawSprite(still("wall-top", wallTop, true), 0, 0);
+-			drawBox(screenBox(!wallTop.empty()), 0, 0, 640, 480);
++			drawBox(screenBox(!wallTop.empty()), 0, 0, topWidth(), 480);
+ 			float ry = rise(topAt);
+ 			drawStatus(ry);
+ 			const SysInfo& sy = sys(ui->mSys);
+@@ -1797,9 +1808,9 @@ namespace rnds
+ 				float total = 96 + 10 + 52 + (chip ? 10 + 74 : 0);
+ 				float y0 = 81 + (366 - total) / 2 + ry;
+ 				float b = bob();
+-				drawBox(heroBox(), 272, y0 + b, 96, 96);
++				drawBox(heroBox(), topWidth() / 2 - 48, y0 + b, 96, 96);
+ 				Sprite ic = icon(sy.icon);
+-				if (ic.valid()) be->draw(ic.tex, std::round(X(280)), std::round(X(y0 + 8 + b)), std::round(X(80)), std::round(X(80)), Color(1, 1, 1, 1));
++				if (ic.valid()) be->draw(ic.tex, std::round(X(topWidth() / 2 - 40)), std::round(X(y0 + 8 + b)), std::round(X(80)), std::round(X(80)), Color(1, 1, 1, 1));
+ 
+ 				// stats; an app's tile has its time alone (one entry, started or not, is nothing to count)
+ 				std::string vals[3] = { std::to_string(sy.games), std::to_string(sy.played), sy.time };
+@@ -1815,7 +1826,7 @@ namespace rnds
+ 					colW[i] = std::max(84.0f, std::max(lb[i].width, ll[i].width));
+ 					total3 += colW[i];
+ 				}
+-				float x = 320 - total3 / 2, sy0 = y0 + 106;
++				float x = topWidth() / 2 - total3 / 2, sy0 = y0 + 106;
+ 				for (int i = c0; i < 3; i++)
+ 				{
+ 					drawLine(lb[i], tb, x + (colW[i] - lb[i].width) / 2, sy0, 28, INK);
+@@ -1829,7 +1840,7 @@ namespace rnds
+ 					TextLine le = layoutLine(utf8to32(sy.resumeEyebrow), tstyle(te));
+ 					const float ltW = 300;
+ 					float cw = chipWidth(sy);
+-					float cx = 320 - cw / 2, cy = y0 + 168;
++					float cx = topWidth() / 2 - cw / 2, cy = y0 + 168;
+ 					drawBox(chipBox(), cx, cy, cw, 74);
+ 					Sprite c = cart(CartArt{ sy.resumeCart, sy.resumeLabel, sy.resumeBox, "", sy.icon }, 54, 56);
+ 					drawSprite(c, cx + 11, cy + 9);
+diff --git a/ui/rnds/RndsUI.h b/ui/rnds/RndsUI.h
+index f50f0100..3a8a1bfb 100644
+--- a/ui/rnds/RndsUI.h
++++ b/ui/rnds/RndsUI.h
+@@ -105,6 +105,8 @@ namespace rnds
+ 	{
+ 	public:
+ 		virtual ~Backend() {}
++		// Optional native canvas size; older equal-panel backends keep 640 CSS px.
++		virtual int screenWidth(int /*screen*/) const { return 0; }
+ 		virtual TexPtr upload(const Bitmap& b, bool smooth) = 0;
+ 		// device pixels of the current screen; tint multiplies (alpha textures take its colour)
+ 		virtual void draw(const TexPtr& t, float x, float y, float w, float h, const Color& tint) = 0;
+diff --git a/ui/src/kms.cpp b/ui/src/kms.cpp
+index 4a989cce..404fdaa2 100644
+--- a/ui/src/kms.cpp
++++ b/ui/src/kms.cpp
+@@ -1,4 +1,6 @@
+ #include "kms.h"
++#include "scanout.h"
++#include "plane-selection.h"
+ #include <algorithm>
+ #include <cerrno>
+ #include <cmath>
+@@ -40,19 +42,19 @@ namespace banana
+ 	}
+ 
+ 	// a CRTC's primary plane: the one its pictures are on now, else a primary one it can use (0: none)
+-	static uint32_t primaryPlane(int fd, uint32_t crtc)
++	static uint32_t primaryPlane(int fd, uint32_t crtc, uint32_t reserved = 0)
+ 	{
+ 		drmSetClientCap(fd, DRM_CLIENT_CAP_UNIVERSAL_PLANES, 1);
+ 		drmModeRes* res = drmModeGetResources(fd);
+ 		drmModePlaneRes* pr = drmModeGetPlaneResources(fd);
+ 		int idx = -1;
+ 		for (int i = 0; res && i < res->count_crtcs; i++) if (res->crtcs[i] == crtc) idx = i;
+-		uint32_t plane = 0, any = 0;
++		std::vector<PrimaryPlaneCandidate> candidates;
+ 		for (uint32_t j = 0; pr && idx >= 0 && j < pr->count_planes; j++)
+ 		{
+ 			drmModePlane* pl = drmModeGetPlane(fd, pr->planes[j]);
+ 			if (!pl) continue;
+-			bool mine = pl->possible_crtcs & (1u << idx), primary = false;
++			bool primary = false;
+ 			if (drmModeObjectProperties* pp = drmModeObjectGetProperties(fd, pl->plane_id, DRM_MODE_OBJECT_PLANE))
+ 			{
+ 				for (uint32_t k = 0; k < pp->count_props; k++)
+@@ -63,13 +65,12 @@ namespace banana
+ 					}
+ 				drmModeFreeObjectProperties(pp);
+ 			}
+-			if (mine && primary && pl->crtc_id == crtc) plane = pl->plane_id;
+-			if (mine && primary && !any) any = pl->plane_id;
++			candidates.push_back({ pl->plane_id, pl->possible_crtcs, pl->crtc_id, primary });
+ 			drmModeFreePlane(pl);
+ 		}
+ 		if (pr) drmModeFreePlaneResources(pr);
+ 		if (res) drmModeFreeResources(res);
+-		return plane ? plane : any;
++		return selectPrimaryPlane(candidates, crtc, idx, reserved);
+ 	}
+ 
+ 	// a free overlay plane the CRTC can use (none in use by anything: fb 0), for the lease: the game's frontend draws
+@@ -104,14 +105,14 @@ namespace banana
+ 		return plane;
+ 	}
+ 
+-	bool Display::makeBuf(Buf& b)
++	bool Display::makeBuf(Buf& b, int width, int height)
+ 	{
+ 		drm_mode_create_dumb c = {};
+-		c.width = W; c.height = H; c.bpp = 32;
++		c.width = width; c.height = height; c.bpp = 32;
+ 		if (drmIoctl(fd, DRM_IOCTL_MODE_CREATE_DUMB, &c)) return false;
+ 		b.handle = c.handle; b.pitch = c.pitch; b.size = c.size;
+ 		uint32_t handles[4] = { b.handle }, pitches[4] = { b.pitch }, offsets[4] = { 0 };
+-		if (drmModeAddFB2(fd, W, H, 0x34325258 /* XR24 */, handles, pitches, offsets, &b.fb, 0)) return false;
++		if (drmModeAddFB2(fd, width, height, 0x34325258 /* XR24 */, handles, pitches, offsets, &b.fb, 0)) return false;
+ 		drm_mode_map_dumb m = {};
+ 		m.handle = b.handle;
+ 		if (drmIoctl(fd, DRM_IOCTL_MODE_MAP_DUMB, &m)) return false;
+@@ -133,6 +134,17 @@ namespace banana
+ 	bool Display::open(const std::string& top, std::string& err)
+ 	{
+ 		close();
++		std::string bottom = getenv("BANANA_BOTTOM") ? getenv("BANANA_BOTTOM") : "";
++		int rotation = 0;
++		if (const char* r = getenv("BANANA_TOP_ROTATION"))
++		{
++			if (!strcmp(r, "90")) rotation = 90;
++			else if (!strcmp(r, "180")) rotation = 180;
++			else if (!strcmp(r, "270")) rotation = 270;
++			else if (strcmp(r, "0")) { err = "BANANA_TOP_ROTATION must be 0, 90, 180 or 270"; return false; }
++		}
++		if (bottom == top) { err = "top and bottom connectors must differ"; return false; }
++		if (rotation && bottom.empty()) { err = "rotation requires BANANA_BOTTOM"; return false; }
+ 		std::vector<std::string> cards;
+ 		if (DIR* d = opendir("/dev/dri"))
+ 		{
+@@ -144,6 +156,7 @@ namespace banana
+ 		// the panels' connector type from the top one's name ("DSI-2"; "Virtual-2" on QEMU's virtio GPU)
+ 		std::string type = top.substr(0, top.find('-'));
+ 		err = "no DRM device with two connected " + type + " panels";
++		if (!bottom.empty()) err = "no DRM device with connected " + top + " and " + bottom;
+ 		for (auto& path : cards)
+ 		{
+ 			int f = ::open(path.c_str(), O_RDWR | O_CLOEXEC);
+@@ -158,7 +171,9 @@ namespace banana
+ 				drmModeConnector* c = drmModeGetConnector(f, res->connectors[i]);
+ 				if (!c) continue;
+ 				const char* tn = drmModeGetConnectorTypeName(c->connector_type);
+-				if (tn && type == tn && c->connection == DRM_MODE_CONNECTED && c->count_modes > 0)
++				std::string name = tn ? std::string(tn) + "-" + std::to_string(c->connector_type_id) : "";
++				bool selected = bottom.empty() ? tn && type == tn : name == top || name == bottom;
++				if (selected && c->connection == DRM_MODE_CONNECTED && c->count_modes > 0)
+ 				{
+ 					// the mode: the kernel command line's (video=<connector>:<mode>) first, then the panel's preferred one
+ 					drmModeModeInfo mode = c->modes[0];
+@@ -180,8 +195,6 @@ namespace banana
+ 					}
+ 					if (crtc)
+ 					{
+-						char name[32];
+-						snprintf(name, sizeof name, "%s-%u", tn, c->connector_type_id);
+ 						used.push_back(crtc);
+ 						found.push_back({ c->connector_id, crtc, mode, top == name, modes });
+ 					}
+@@ -195,10 +208,10 @@ namespace banana
+ 			if (found[1].top) std::swap(found[0], found[1]);
+ 			// the panels' preferred modes differ (a display that isn't the RG DS's pair): the bottom one takes the top's
+ 			// size when it has it
+-			if (found[0].mode.hdisplay != found[1].mode.hdisplay || found[0].mode.vdisplay != found[1].mode.vdisplay)
++			if (bottom.empty() && (found[0].mode.hdisplay != found[1].mode.hdisplay || found[0].mode.vdisplay != found[1].mode.vdisplay))
+ 				for (auto& m : found[1].modes)
+ 					if (m.hdisplay == found[0].mode.hdisplay && m.vdisplay == found[0].mode.vdisplay) { found[1].mode = m; break; }
+-			if (found[0].mode.hdisplay != found[1].mode.hdisplay || found[0].mode.vdisplay != found[1].mode.vdisplay)
++			if (bottom.empty() && (found[0].mode.hdisplay != found[1].mode.hdisplay || found[0].mode.vdisplay != found[1].mode.vdisplay))
+ 			{
+ 				err = "the two panels have different modes";
+ 				::close(f);
+@@ -209,16 +222,31 @@ namespace banana
+ 			// as its modesets are queued (a second at most)
+ 			masterAtOpen = handOver;
+ 			for (int t = 0; !handOver && t < 100; t++) { if (drmSetMaster(fd) == 0) { masterAtOpen = true; break; } usleep(10000); }
+-			W = found[0].mode.hdisplay; H = found[0].mode.vdisplay;
++			int canvas = bottom.empty() ? 0 : 1;
++			W = found[canvas].mode.hdisplay; H = found[canvas].mode.vdisplay;
++			canvasW[0] = canvasW[1] = W;
++			if (!bottom.empty()) {
++				int tw = rotation == 90 || rotation == 270 ? found[0].mode.vdisplay : found[0].mode.hdisplay;
++				int th = rotation == 90 || rotation == 270 ? found[0].mode.hdisplay : found[0].mode.vdisplay;
++				canvasW[0] = (int)std::lround((double)H * tw / th);
++			}
+ 			for (int s = 0; s < 2; s++)
+ 			{
+ 				p[s] = Panel();
+ 				p[s].conn = found[s].conn; p[s].crtc = found[s].crtc;
+ 				memcpy(p[s].mode, &found[s].mode, sizeof p[s].mode);
+-				if (!makeBuf(p[s].buf[0]) || !makeBuf(p[s].buf[1])) { err = "can't make scanout buffers"; close(); return false; }
++				p[s].width = found[s].mode.hdisplay; p[s].height = found[s].mode.vdisplay;
++				p[s].rotation = s == 0 ? rotation : 0;
++				if (!makeBuf(p[s].buf[0], p[s].width, p[s].height) || !makeBuf(p[s].buf[1], p[s].width, p[s].height))
++					{ err = "can't make scanout buffers"; close(); return false; }
+ 			}
+ 			// panels still dark (the boot): both lit at once; else (lit, or the driver won't) as always
+-			if (!lightBoth() && !handOver) restore();
++			const char* serial = std::getenv("BANANA_SERIAL_MODESET");
++			if (serial && !strcmp(serial, "1") && !handOver) {
++				int before = failedSets;
++				restore();
++				if (failedSets != before) { err = "initial display modeset failed"; close(); return false; }
++			} else if (!lightBoth() && !handOver) restore();
+ 			return true;
+ 		}
+ 		return false;
+@@ -238,14 +266,16 @@ namespace banana
+ 		drmModeAtomicReq* req[2] = {};
+ 		uint32_t blob[2] = {};
+ 		bool ok = true;
++		uint32_t reserved = 0;
+ 		for (int s = 0; s < 2 && ok; s++)
+ 		{
+-			uint32_t plane = primaryPlane(fd, p[s].crtc);
++			uint32_t plane = primaryPlane(fd, p[s].crtc, reserved);
++			reserved = plane;
+ 			uint32_t modeId = propId(fd, p[s].crtc, DRM_MODE_OBJECT_CRTC, "MODE_ID");
+ 			uint32_t active = propId(fd, p[s].crtc, DRM_MODE_OBJECT_CRTC, "ACTIVE");
+ 			uint32_t connCrtc = propId(fd, p[s].conn, DRM_MODE_OBJECT_CONNECTOR, "CRTC_ID");
+ 			const char* names[] = { "FB_ID", "CRTC_ID", "SRC_X", "SRC_Y", "SRC_W", "SRC_H", "CRTC_X", "CRTC_Y", "CRTC_W", "CRTC_H" };
+-			const uint64_t values[] = { p[s].buf[p[s].front].fb, p[s].crtc, 0, 0, (uint64_t)W << 16, (uint64_t)H << 16, 0, 0, (uint64_t)W, (uint64_t)H };
++			const uint64_t values[] = { p[s].buf[p[s].front].fb, p[s].crtc, 0, 0, (uint64_t)p[s].width << 16, (uint64_t)p[s].height << 16, 0, 0, (uint64_t)p[s].width, (uint64_t)p[s].height };
+ 			ok = plane && modeId && active && connCrtc && !drmModeCreatePropertyBlob(fd, p[s].mode, sizeof p[s].mode, &blob[s]);
+ 			req[s] = drmModeAtomicAlloc();
+ 			ok = ok && req[s] && drmModeAtomicAddProperty(req[s], p[s].crtc, modeId, blob[s]) >= 0 &&
+@@ -319,7 +349,10 @@ namespace banana
+ 		drmSetMaster(fd);
+ 		if (leased < 0) planesUpright(fd);
+ 		for (int s = 0; s < 2; s++)
+-			if (s != leased) drmModeSetCrtc(fd, p[s].crtc, p[s].buf[p[s].front].fb, 0, 0, &p[s].conn, 1, (drmModeModeInfo*)p[s].mode);
++			if (s != leased && drmModeSetCrtc(fd, p[s].crtc, p[s].buf[p[s].front].fb, 0, 0, &p[s].conn, 1, (drmModeModeInfo*)p[s].mode)) {
++				failedSets++;
++				fprintf(stderr, "banana-ui: display: screen %d initial/restore modeset failed: %s\n", s, strerror(errno));
++			}
+ 		pending = 0;
+ 	}
+ 
+@@ -420,7 +453,7 @@ namespace banana
+ 		bool any = false;
+ 		for (int s = 0; s < 2; s++)
+ 		{
+-			if (s == leased) continue;	// a game draws there
++			if (s == leased && !menuOwnsLeased) continue;	// a game draws there
+ 			Panel& pn = p[s];
+ 			// the hidden buffer missed what changed since it was shown: this frame's part and the last frame's
+ 			int back = pn.front ^ 1;
+@@ -428,13 +461,17 @@ namespace banana
+ 			d.add(pn.missed[back]);
+ 			pn.missed[back] = Damage();
+ 			d.x0 = std::max(d.x0, 0); d.y0 = std::max(d.y0, 0);
+-			d.x1 = std::min(d.x1, W); d.y1 = std::min(d.y1, H);
++			int sw = canvasW[s];
++			d.x1 = std::min(d.x1, sw); d.y1 = std::min(d.y1, H);
+ 			if (d.empty()) continue;
+ 			Buf& bf = pn.buf[back];
+ 			// only the columns that changed: the scanout buffer is uncached, every byte written costs
+ 			size_t n = (size_t)(d.x1 - d.x0) * 4;
+-			for (int y = d.y0; y < d.y1; y++)
+-				memcpy(bf.map + (size_t)y * bf.pitch + (size_t)d.x0 * 4, screens[s] + (size_t)y * W + d.x0, n);
++			if (pn.rotation || pn.width != sw || pn.height != H)
++				fitScanout(bf.map, bf.pitch, pn.width, pn.height, pn.rotation, screens[s], sw, H);
++			else
++				for (int y = d.y0; y < d.y1; y++)
++					memcpy(bf.map + (size_t)y * bf.pitch + (size_t)d.x0 * 4, screens[s] + (size_t)y * sw + d.x0, n);
+ 			pn.missed[pn.front] = dmg[s];	// the buffer going hidden misses this frame
+ 			if (drmModePageFlip(fd, pn.crtc, bf.fb, DRM_MODE_PAGE_FLIP_EVENT, &pending) == 0)
+ 			{
+diff --git a/ui/src/kms.h b/ui/src/kms.h
+index 351a9898..e7f8d6a7 100644
+--- a/ui/src/kms.h
++++ b/ui/src/kms.h
+@@ -26,7 +26,8 @@ namespace banana
+ 	public:
+ 		~Display() { close(); }
+ 		// the first DRM device with two connected panels of top's connector type; top is the connector shown as the
+-		// top screen ("DSI-2" on the handheld; "Virtual-2" on QEMU's virtio GPU, see tools/qemu-boot.sh)
++		// top screen ("DSI-2" on the handheld; "Virtual-2" on QEMU's virtio GPU, see tools/qemu-boot.sh).
++		// BANANA_BOTTOM selects an explicit second connector, including a different type and native size.
+ 		bool open(const std::string& top, std::string& err);
+ 		// the boot's early light-up (banana-ui --panels-on, from rcS's first lines): both panels powered up while the
+ 		// rest of the boot runs; the master given up as soon as the modesets are queued, so the menu's own open() takes the
+@@ -35,6 +36,7 @@ namespace banana
+ 		void close();
+ 		bool isOpen() const { return fd >= 0; }
+ 		int width() const { return W; }
++		int width(int screen) const { return canvasW[screen]; }
+ 		int height() const { return H; }
+ 		int pollFd() const { return fd; }
+ 		bool flipPending() const { return pending > 0; }
+@@ -54,6 +56,8 @@ namespace banana
+ 		// program's DRM device, or -1. present() and restore() leave the screen alone until close().
+ 		int lease(int s);
+ 		int leasedScreen() const { return leased; }
++        // Only while the leased renderer is paused and stopped by the OS host.
++        void originalMenu(bool on) { menuOwnsLeased = on; }
+ 		// the display controller's interrupt storm (VOP2 POST_BUF_EMPTY, a panel's scanout underflowing ~100k times a
+ 		// second, seen after RetroArch's leased panel was given back): measured over 200 ms, and when it storms both
+ 		// CRTCs are switched off and on again, the one thing that ends it. The rate after, or -1 when it was calm.
+@@ -66,11 +70,13 @@ namespace banana
+ 
+ 	private:
+ 		struct Buf { uint32_t handle = 0, fb = 0, pitch = 0; uint64_t size = 0; uint8_t* map = nullptr; };
+-		struct Panel { uint32_t conn = 0, crtc = 0; uint8_t mode[68]; Buf buf[2]; int front = 0; Damage missed[2]; };
++		struct Panel { uint32_t conn = 0, crtc = 0; uint8_t mode[68]; Buf buf[2]; int front = 0; Damage missed[2]; int width = 0, height = 0, rotation = 0; };
+ 		int fd = -1, W = 0, H = 0, pending = 0, leased = -1;
++		bool menuOwnsLeased = false;
++		int canvasW[2] = {};
+ 		int lightWaiting = 0;	// lightBoth's flips still to come (a member: an event late past its wait lands here)
+ 		Panel p[2];
+-		bool makeBuf(Buf& b);
++		bool makeBuf(Buf& b, int width, int height);
+ 		bool lightBoth();
+ 		void freeBuf(Buf& b);
+ 	};
+diff --git a/ui/src/main.cpp b/ui/src/main.cpp
+index 65a057ed..84e2d0f4 100644
+--- a/ui/src/main.cpp
++++ b/ui/src/main.cpp
+@@ -22,6 +22,7 @@
+ #include "arrival.h"
+ #include "lang.h"
+ #include "settings.h"
++#include "original_game_menu.h"
+ #include "complink.h"
+ #include "nds/overlay.h"
+ #include "nds/pages_page.h"
+@@ -285,6 +286,7 @@ struct Options
+ 	std::string systems = "/etc/banana/systems.conf", roms = "/data/roms", data = "/data/banana";
+ 	std::string top = "DSI-2", touch = "fe5e0000.i2c";
+ 	std::string headless, script;
++	int topWidth = 0;
+ 	std::string theme;		// --theme FILE: that theme's .json instead of the settings' (a theme being made)
+ 	int w = 640, h = 480;
+ };
+@@ -369,6 +371,31 @@ static bool openPage(Settings& st, const std::string& page)
+ template <class H, class U> static void backFromGame(H& lib, U& ui, int game)
+ {
+ 	const int sys = lib.currentShelf();
++	// PortMaster installs/removes shortcuts while the UI is paused. Refresh on
++	// return even inside the Ports list: the background watcher waits for HOME.
++	if (sys >= 0 && sys < lib.systemCount() && lib.shelf(sys).def.id == "ports" &&
++		game >= 0 && game < (int)lib.shelf(sys).games.size())
++	{
++		const std::string path = lib.shelf(sys).games[game].path;
++		if (path.substr(path.find_last_of('/') + 1) == "PortMaster.sh")
++		{
++			lib.scan();
++			ui.dataChanged();
++			for (int i = 0; i < lib.systemCount(); i++)
++				if (lib.shelf(i).def.id == "ports")
++				{
++					lib.openLibrary(i);
++					const int n = lib.gameCount();
++					int selected = std::min(game, std::max(0, n - 1));
++					for (int j = 0; j < n; j++) if (lib.shelf(i).games[j].path == path) selected = j;
++					if (n > 0) ui.setLibrary(i, selected); else ui.setHome(i);
++					logf("PortMaster returned: refreshed ports, %d entries", n);
++					return;
++				}
++			ui.setHome(0);
++			return;
++		}
++	}
+ 	if (sys >= 0 && sys < lib.systemCount() && lib.system(sys).app) ui.setHome(sys);
+ 	else ui.setLibrary(sys, game);
+ }
+@@ -859,7 +886,7 @@ static int ndsPresenterTest(const std::string& file, const std::string& out, boo
+ 
+ static int runHeadless(const Options& o, Host& lib, const std::string& variant, const std::string& theme)
+ {
+-	SoftBackend be(o.w, o.h);
++	SoftBackend be(o.w, o.h, o.topWidth);
+ 	std::string layout = themePath(theme);
+ 	std::unique_ptr<Menu> uiPtr(theme == "carts" ? (Menu*)new CartMenu(&lib, &be, o.banana + "/fonts", o.h / 480.0f)
+ 		: isLayoutTheme(layout) ? (Menu*)new LayoutMenu(&lib, &be, layout, o.h / 480.0f, o.assets + "/fonts", o.banana + "/fonts")
+@@ -871,10 +898,11 @@ static int runHeadless(const Options& o, Host& lib, const std::string& variant,
+ 	auto settle = [&] { ui.update(now); ui.finishWork(); ui.update(now); };
+ 	auto save = [&](int s, const std::string& path)
+ 	{
+-		std::vector<uint8_t> rgb((size_t)o.w * o.h * 3);
++		int sw = be.width(s);
++		std::vector<uint8_t> rgb((size_t)sw * o.h * 3);
+ 		const uint32_t* p = be.pixels(s);
+-		for (size_t i = 0; i < (size_t)o.w * o.h; i++) { rgb[i * 3] = (p[i] >> 16) & 255; rgb[i * 3 + 1] = (p[i] >> 8) & 255; rgb[i * 3 + 2] = p[i] & 255; }
+-		return stbi_write_png(path.c_str(), o.w, o.h, 3, rgb.data(), o.w * 3) != 0;
++		for (size_t i = 0; i < (size_t)sw * o.h; i++) { rgb[i * 3] = (p[i] >> 16) & 255; rgb[i * 3 + 1] = (p[i] >> 8) & 255; rgb[i * 3 + 2] = p[i] & 255; }
++		return stbi_write_png(path.c_str(), sw, o.h, 3, rgb.data(), sw * 3) != 0;
+ 	};
+ 	ui.setHome(0);
+ 	Settings settings(&be, o.assets, o.data, o.h / 480.0f, variant);
+@@ -1036,8 +1064,8 @@ static int runHeadless(const Options& o, Host& lib, const std::string& variant,
+ 			static bool loaded = false;
+ 			if (!loaded)
+ 			{
+-				Splash sp;
+-				if (!sp.load(o.splash, o.banana + "/banana-48.png", variant, o.w, o.h) || !ar.load(o.splash, o.w, o.h)) { logf("no splash assets in %s", o.splash.c_str()); return 1; }
++				PanelSplash sp;
++				if (!sp.load(o.splash, o.banana + "/banana-48.png", variant, o.w, o.h, o.topWidth) || !ar.load(o.splash, o.w, o.h)) { logf("no splash assets in %s", o.splash.c_str()); return 1; }
+ 				sp.draw(be.canvas(0), be.canvas(1), Splash::INTRO_END, true);
+ 				ar.setStart(be.pixels(0), be.pixels(1));
+ 				settings.renderCard("Welcome to", "", 174, 26);
+@@ -1444,9 +1472,9 @@ static int runHeadless(const Options& o, Host& lib, const std::string& variant,
+ 			// splash <name> <ms> [ready]: the boot animation at that time
+ 			std::string name; double t = 0; int ready = 0;
+ 			cs >> name >> t >> ready;
+-			static Splash sp;
++			static PanelSplash sp;
+ 			static bool loaded = false;
+-			if (!loaded && !(loaded = sp.load(o.splash, o.banana + "/banana-48.png", variant, o.w, o.h))) { logf("no splash assets in %s", o.splash.c_str()); return 1; }
++			if (!loaded && !(loaded = sp.load(o.splash, o.banana + "/banana-48.png", variant, o.w, o.h, o.topWidth))) { logf("no splash assets in %s", o.splash.c_str()); return 1; }
+ 			sp.draw(be.canvas(0), be.canvas(1), t, ready != 0);
+ 			if (!save(0, o.headless + name + "-top.png") || !save(1, o.headless + name + "-bot.png")) return 1;
+ 			logf("splash %s at %.0f ms", name.c_str(), t);
+@@ -1456,9 +1484,9 @@ static int runHeadless(const Options& o, Host& lib, const std::string& variant,
+ 			// outro <name> <ms>: the shutdown animation at that time
+ 			std::string name; double t = 0;
+ 			cs >> name >> t;
+-			static Splash sp;
++			static PanelSplash sp;
+ 			static bool loaded = false;
+-			if (!loaded && !(loaded = sp.load(o.splash, o.banana + "/banana-48.png", variant, o.w, o.h))) { logf("no splash assets in %s", o.splash.c_str()); return 1; }
++			if (!loaded && !(loaded = sp.load(o.splash, o.banana + "/banana-48.png", variant, o.w, o.h, o.topWidth))) { logf("no splash assets in %s", o.splash.c_str()); return 1; }
+ 			sp.onCue = [](const std::string& n) { logf("outro cue %s", n.c_str()); };
+ 			sp.drawOutro(be.canvas(0), be.canvas(1), t);
+ 			if (!save(0, o.headless + name + "-top.png") || !save(1, o.headless + name + "-bot.png")) return 1;
+@@ -1592,13 +1620,13 @@ static void showFrame(Display& disp, SoftBackend& be, int sig)
+ 	waitFlips(disp, sig);
+ }
+ 
+-static Splash gSplash;
++static PanelSplash gSplash;
+ 
+ // plays until the intro is over and the menu is ready (with the animation off: only the wait for the menu)
+ static void playSplash(Display& disp, SoftBackend& be, const Options& o, const std::string& variant, bool on,
+ 	std::atomic<bool>& ready, Sound& sound, int sig)
+ {
+-	if (!on || !gSplash.load(o.splash, o.banana + "/banana-48.png", variant, be.width(), be.height()))
++	if (!on || !gSplash.load(o.splash, o.banana + "/banana-48.png", variant, be.width(), be.height(), be.width(0)))
+ 	{
+ 		while (!ready) usleep(2000);
+ 		return;
+@@ -1624,14 +1652,14 @@ struct Iris
+ 	Display& disp;
+ 	SoftBackend& be;
+ 	int W, H, block;
+-	size_t n;
++	size_t n[2];
+ 	float full;
+ 	// the boot's (the user: the boot animation keeps its length, only the boot itself gets faster); after a game the
+ 	// opening is GAME_OPEN, 3x as fast
+ 	static constexpr double CLOSE = 360, HOLD = 70, OPEN = 450, GAME_OPEN = 150;
+-	Iris(Display& d, SoftBackend& b) : disp(d), be(b), W(b.width()), H(b.height())
++	Iris(Display& d, SoftBackend& b) : disp(d), be(b), W(std::max(b.width(0), b.width(1))), H(b.height())
+ 	{
+-		n = (size_t)W * H;
++		for (int sc = 0; sc < 2; sc++) n[sc] = (size_t)b.width(sc) * H;
+ 		block = std::max(1, (int)std::lround(2 * H / 480.0f));
+ 		full = std::sqrt((float)(W * W + H * H)) / 2 + block;	// the corners
+ 	}
+@@ -1639,12 +1667,14 @@ struct Iris
+ 	{
+ 		for (int sc = 0; sc < 2; sc++)
+ 		{
++			int W = be.width(sc);
++			float rr = r * (std::sqrt((float)(W * W + H * H)) / 2 + block) / full;
+ 			uint32_t* d = be.canvas(sc);
+ 			for (int y0 = 0; y0 < H; y0 += block)
+ 			{
+ 				// the row band's half-width inside the circle, in whole blocks
+ 				float dy = (y0 + block * 0.5f) - H * 0.5f;
+-				float h2 = r * r - dy * dy;
++				float h2 = rr * rr - dy * dy;
+ 				int half = h2 > 0 ? (int)(std::sqrt(h2) / block) * block : -1;
+ 				int xa = half < 0 ? W : std::max(0, W / 2 - half), xb = half < 0 ? W : std::min(W, W / 2 + half);
+ 				for (int y = y0; y < std::min(H, y0 + block); y++)
+@@ -1677,7 +1707,7 @@ struct Iris
+ 	// the canvas
+ 	void open(const std::vector<uint32_t>* pic, double holdUntil, double dur)
+ 	{
+-		for (int sc = 0; sc < 2; sc++) std::fill(be.canvas(sc), be.canvas(sc) + n, 0xff000000u);
++		for (int sc = 0; sc < 2; sc++) std::fill(be.canvas(sc), be.canvas(sc) + n[sc], 0xff000000u);
+ 		be.invalidate();
+ 		while (nowMs() < holdUntil) showFrame(disp, be, -1);
+ 		const double t2 = nowMs();
+@@ -1697,12 +1727,12 @@ struct Iris
+ 	void openOn(Menu& ui, double hold, double dur = OPEN)
+ 	{
+ 		const double t1 = nowMs();
+-		std::vector<uint32_t> menu[2] = { std::vector<uint32_t>(n), std::vector<uint32_t>(n) };
++		std::vector<uint32_t> menu[2] = { std::vector<uint32_t>(n[0]), std::vector<uint32_t>(n[1]) };
+ 		ui.update(t1 + 300);
+ 		ui.finishWork();
+ 		be.invalidate();
+ 		ui.render();
+-		for (int sc = 0; sc < 2; sc++) std::copy(be.canvas(sc), be.canvas(sc) + n, menu[sc].begin());
++		for (int sc = 0; sc < 2; sc++) std::copy(be.canvas(sc), be.canvas(sc) + n[sc], menu[sc].begin());
+ 		open(menu, t1 + hold, dur);
+ 	}
+ };
+@@ -1713,7 +1743,7 @@ static void irisToMenu(Display& disp, SoftBackend& be, Menu& ui)
+ {
+ 	if (!gSplash.played()) return;
+ 	Iris iris(disp, be);
+-	std::vector<uint32_t> was[2] = { std::vector<uint32_t>(be.pixels(0), be.pixels(0) + iris.n), std::vector<uint32_t>(be.pixels(1), be.pixels(1) + iris.n) };
++	std::vector<uint32_t> was[2] = { std::vector<uint32_t>(be.pixels(0), be.pixels(0) + iris.n[0]), std::vector<uint32_t>(be.pixels(1), be.pixels(1) + iris.n[1]) };
+ 	// the menu's first frame drawn now, before the circle closes (its first draw takes ~130 ms: the glyphs and boxes
+ 	// made; with the splash's last frame still and on screen that wait doesn't show), the splash's put back
+ 	ui.update(nowMs());
+@@ -1741,7 +1771,6 @@ static void fadeSteps(Display& disp, SoftBackend& be, const std::vector<uint32_t
+ {
+ 	const int steps = std::abs(to - from), dir = to > from ? 1 : -1;
+ 	if (!steps) return;
+-	const size_t n = (size_t)be.width() * be.height();
+ 	const double t0 = nowMs();
+ 	int shown = from;
+ 	for (;;)
+@@ -1755,6 +1784,7 @@ static void fadeSteps(Display& disp, SoftBackend& be, const std::vector<uint32_t
+ 			for (int sc = 0; sc < 2; sc++)
+ 			{
+ 				uint32_t* d = be.canvas(sc);
++				size_t n = (size_t)be.width(sc) * be.height();
+ 				const uint32_t* sp = pic[sc].data();
+ 				if (k >= 255) std::copy(sp, sp + n, d);
+ 				else if (k == 0) std::fill(d, d + n, 0xff000000u);
+@@ -1769,8 +1799,7 @@ static void fadeSteps(Display& disp, SoftBackend& be, const std::vector<uint32_t
+ 
+ static void grab(SoftBackend& be, std::vector<uint32_t>* pic)
+ {
+-	const size_t n = (size_t)be.width() * be.height();
+-	for (int sc = 0; sc < 2; sc++) pic[sc].assign(be.pixels(sc), be.pixels(sc) + n);
++	for (int sc = 0; sc < 2; sc++) pic[sc].assign(be.pixels(sc), be.pixels(sc) + (size_t)be.width(sc) * be.height());
+ }
+ 
+ // The first boot's arrival (arrival.h), from the boot animation's last frame to black. A or START skips to the setup;
+@@ -1778,11 +1807,13 @@ static void grab(SoftBackend& be, std::vector<uint32_t>* pic)
+ static void playArrival(Display& disp, SoftBackend& be, const Options& o, Input& input, Sound& sound, Settings& sv, int sig,
+ 	const std::function<void()>& frameTick)
+ {
+-	Arrival a;
+-	if (!a.load(o.splash, be.width(), be.height())) { logf("arrival: no pictures in %s", o.splash.c_str()); return; }
+-	a.setStart(be.pixels(0), be.pixels(1));
++	Arrival a, topArrival;
++	std::vector<uint32_t> topScratch((size_t)be.width(0) * be.height()), bottomScratch((size_t)be.width(1) * be.height());
++	if (!a.load(o.splash, be.width(), be.height()) || !topArrival.load(o.splash, be.width(0), be.height())) { logf("arrival: no pictures in %s", o.splash.c_str()); return; }
++	a.setStart(bottomScratch.data(), be.pixels(1));
++	topArrival.setStart(be.pixels(0), topScratch.data());
+ 	sv.renderCard("Welcome to", "", 174, 26);
+-	a.setCaption(be.pixels(0));
++	topArrival.setCaption(be.pixels(0));
+ 	a.onCue = [&sound](const std::string& c) { sound.play(c == "burst" ? "ready" : "fav"); };
+ 	const double t0 = nowMs();
+ 	const int flips0 = disp.failedFlips, sets0 = disp.failedSets, unsent0 = gUnsent;
+@@ -1821,7 +1852,8 @@ static void playArrival(Display& disp, SoftBackend& be, const Options& o, Input&
+ 		if (a.still(t)) { usleep(4000); last = -1; continue; }
+ 		frameTick();	// (the CPU's clock up while it moves, as for the menu's animations)
+ 		double d0 = nowMs();
+-		a.draw(be.canvas(0), be.canvas(1), t);
++		topArrival.draw(be.canvas(0), topScratch.data(), t);
++		a.draw(bottomScratch.data(), be.canvas(1), t);
+ 		double dd = nowMs() - d0;
+ 		showFrame(disp, be, -1);
+ 		double now = nowMs();
+@@ -1891,12 +1923,12 @@ static void welcomeToMenu(Display& disp, SoftBackend& be, Menu& ui, Settings& sv
+ // frame, and the animation plays backwards to black (Splash::drawOutro). ~1.9 s: rcK gives the menu 3 s to go.
+ static void playOutro(Display& disp, SoftBackend& be, const Options& o, const std::string& variant, Sound& sound)
+ {
+-	Splash sp;
+-	if (!sp.load(o.splash, o.banana + "/banana-48.png", variant, be.width(), be.height())) return;
++	PanelSplash sp;
++	if (!sp.load(o.splash, o.banana + "/banana-48.png", variant, be.width(), be.height(), be.width(0))) return;
+ 	sp.onCue = [&sound](const std::string& n) { if (n == "eject") sound.play("back"); };
+ 	Iris iris(disp, be);
+-	std::vector<uint32_t> was[2] = { std::vector<uint32_t>(be.pixels(0), be.pixels(0) + iris.n), std::vector<uint32_t>(be.pixels(1), be.pixels(1) + iris.n) };
+-	std::vector<uint32_t> first[2] = { std::vector<uint32_t>(iris.n), std::vector<uint32_t>(iris.n) };
++	std::vector<uint32_t> was[2] = { std::vector<uint32_t>(be.pixels(0), be.pixels(0) + iris.n[0]), std::vector<uint32_t>(be.pixels(1), be.pixels(1) + iris.n[1]) };
++	std::vector<uint32_t> first[2] = { std::vector<uint32_t>(iris.n[0]), std::vector<uint32_t>(iris.n[1]) };
+ 	sp.drawOutro(first[0].data(), first[1].data(), 0);
+ 	iris.close(was, 280);
+ 	iris.open(first, nowMs() + Iris::HOLD, 300);
+@@ -1916,7 +1948,7 @@ static void playOutro(Display& disp, SoftBackend& be, const Options& o, const st
+ static void irisFromGame(Display& disp, SoftBackend& be, Menu& ui)
+ {
+ 	Iris iris(disp, be);
+-	for (int sc = 0; sc < 2; sc++) std::fill(be.canvas(sc), be.canvas(sc) + iris.n, 0xff000000u);
++	for (int sc = 0; sc < 2; sc++) std::fill(be.canvas(sc), be.canvas(sc) + iris.n[sc], 0xff000000u);
+ 	be.invalidate();
+ 	showFrame(disp, be, -1);
+ 	iris.openOn(ui, 40, Iris::GAME_OPEN);
+@@ -2119,6 +2151,7 @@ int main(int argc, char** argv)
+ 		else if (a == "--data") o.data = next();
+ 		else if (a == "--headless") o.headless = next();
+ 		else if (a == "--script") o.script = next();
++		else if (a == "--top-width") o.topWidth = atoi(next().c_str());
+ 		else if (a == "--theme") o.theme = next();
+ 		else if (a == "--size") { std::string s = next(); if (sscanf(s.c_str(), "%dx%d", &o.w, &o.h) != 2) { logf("bad size"); return 2; } }
+ 		else { logf("unknown option %s", a.c_str()); return 2; }
+@@ -2167,6 +2200,15 @@ int main(int argc, char** argv)
+ 		std::ifstream("/etc/banana/version") >> v;
+ 		std::ifstream sf("/etc/banana/stage"); std::string st; if (std::getline(sf, st) && !st.empty()) stage = st;
+ 		if (!v.empty()) rnds::brandNote = stage + " " + v.substr(0, v.find('-'));
++		std::string board, build;
++		std::ifstream("/etc/banana/board") >> board;
++		std::ifstream bf("/etc/banana/build");
++		if (board == "duolite" && std::getline(bf, build))
++		{
++			const std::string tag = build.substr(build.find_last_of(' ') + 1);
++			if (tag.compare(0, 5, "alpha") == 0 && tag.size() > 5)
++				rnds::brandNote = "Alpha " + tag.substr(5);
++		}
+ 	}
+ 	Host lib(o.systems, o.roms, o.data, o.assets);
+ 	lib.motion = settings["motion"] != "off";
+@@ -2201,7 +2243,7 @@ int main(int argc, char** argv)
+ 		if (tries >= 100) { logf("%s", err.c_str()); return 1; }
+ 		usleep(50000);
+ 	}
+-	SoftBackend be(disp.width(), disp.height());
++	SoftBackend be(disp.width(), disp.height(), disp.width(0));
+ 	logf("panels %dx%d%s", disp.width(), disp.height(), disp.masterAtOpen ? "" : " (the display's master still held by another program: taken at the first frame)");
+ 	bootMark("banana-ui: panels open");
+ 	// the screen colours (Settings > Display & sound > Screen colours): the one colour table, on the screen it corrects
+@@ -2387,7 +2429,7 @@ int main(int argc, char** argv)
+ 		double t = nowMs();
+ 		// the flight recorder recording (bananad's /run/banana/recording): a small red dot in the top corner
+ 		if (access("/run/banana/recording", F_OK) == 0)
+-			be.fill(std::round(disp.width() - 16 * scale), std::round(6 * scale), std::round(6 * scale), std::round(6 * scale), rnds::Color::hex(0xff3b30));
++			be.fill(std::round(disp.width(0) - 16 * scale), std::round(6 * scale), std::round(6 * scale), std::round(6 * scale), rnds::Color::hex(0xff3b30));
+ 		if (low.showing(t)) settingsView.notice(low.title, low.body, low.percent);
+ 		else if (bsNotice.showing(t)) settingsView.banner(bsNotice.title, bsNotice.body, bsNotice.sign, bsNotice.accent);
+ 		else if (fetchNotice.showing(t)) settingsView.banner(fetchNotice.title, fetchNotice.body, fetchNotice.sign, fetchNotice.accent);
+@@ -2475,6 +2517,7 @@ int main(int argc, char** argv)
+ 			break;
+ 		}
+ 		case Settings::REBOOT: logf("restarting"); recordEvent("menu", "restart (Settings)"); kill(1, SIGTERM); break;		// busybox init: SIGTERM reboots
++		case Settings::FAST_POWEROFF: logf("fast shut down"); std::ofstream("/run/banana/fast-poweroff") << "1\n"; kill(1, SIGUSR2); break;
+ 		case Settings::POWEROFF: logf("shutting down"); recordEvent("menu", "shut down (Settings)"); kill(1, SIGUSR2); break;	// and SIGUSR2 powers off
+ 		default: break;
+ 		}
+@@ -2638,11 +2681,22 @@ int main(int argc, char** argv)
+ 		// much longer before it saw it
+ 		const int pidFd = (int)syscall(SYS_pidfd_open, pid, 0);
+ 		bool linkSeen = false, pipeWarned = false;
++        bool panelFnHeld = false;
+ 		for (;;)
+ 		{
+ 			pid_t w = waitpid(pid, &status, WNOHANG);
+ 			if (w == pid || (w < 0 && errno != EINTR)) break;
+-			double t = nowMs();
++            double t = nowMs();
++            if (settingsView.takeGameMenuRequest()) {
++                bottomIdle.activity(t);
++                if (!originalGameMenu(disp, be, input, pid, cmdFd, outFd, gameRomPath, sigPipe[0])) {
++                    logf("original menu unavailable: using RetroArch fallback");
++                    pipeWrite(cmdFd, "MENU_TOGGLE\n", 12);
++                }
++                panelFnHeld = false;
++                bottomIdle.activity(nowMs());
++                be.invalidate(); want = true;
++            }
+ 			bottomIdle.tick(t);	// the bottom game panel dims on its own idle timer too (the game is on the other)
+ 			if (outFd >= 0)
+ 			{
+@@ -2739,6 +2793,13 @@ int main(int argc, char** argv)
+ 					{
+ 						// the buttons are the game's; F and a Companion button (the back button's job by default) also
+ 						// switch the panel between its menu and the companion
++                        if (ev.type == InputEvent::PRESS || ev.type == InputEvent::RELEASE) {
++                            if (ev.code == BTN_MODE) panelFnHeld = ev.type == InputEvent::PRESS;
++                            if (panelFnHeld && ev.code == BTN_NORTH && ev.type == InputEvent::PRESS) {
++                                std::lock_guard<std::mutex> l(worker.uiLock);
++                                settingsView.gameMenuRequest(); want = true; return;
++                            }
++                        }
+ 						if (ev.type == InputEvent::PRESS)
+ 						{
+ 							std::lock_guard<std::mutex> l(worker.uiLock);
+@@ -2825,14 +2886,17 @@ int main(int argc, char** argv)
+ 		bool ra = sd.run.find("run-retroarch") != std::string::npos || sd.run.find("run-ps1") != std::string::npos ||
+ 			sd.run.find("run-bananafront") != std::string::npos ||
+ 			(sd.run.find("run-pico8") != std::string::npos && access("/data/roms/pico-8/pico8_64", F_OK) != 0);
+-		bool panel = ra && settings["retroarch_panel"] != "off" && disp.isOpen();
++		// Native KMS uses the inherited DRM lease through the OS lease shim.
++        std::string launchBoard;
++        std::ifstream("/etc/banana/board") >> launchBoard;
++        bool panel = ra && settings["retroarch_panel"] != "off" && disp.isOpen();
+ 		int gameScreen = 0, leaseFd = -1, cmdFd = -1, outFd = -1;
+ 		const char* OUT = "/run/banana/retroarch.out";	// RetroArch's stdout, for the Pokémon companion
+ 		if (panel)
+ 		{
+ 			// the panel RetroArch is set to use (Settings > Other systems > Screen: video_monitor_index 2 the top, 1 the
+ 			// bottom)
+-			gameScreen = getConfValue("/data/retroarch/retroarch.cfg", "video_monitor_index", "2") == "1" ? 1 : 0;
++			gameScreen = launchBoard == "duolite" ? 0 : getConfValue("/data/retroarch/retroarch.cfg", "video_monitor_index", "2") == "1" ? 1 : 0;
+ 			leaseFd = disp.lease(gameScreen);
+ 			unlink(FIFO);
+ 			unlink("/run/banana/retroarch.log");	// (the last game's: the panel must not read it as this one's)
+@@ -2881,13 +2945,14 @@ int main(int argc, char** argv)
+ 		bool gcOn = !pkOn && panel && settings["game_companion"] == "on" &&
+ 			((access("/data/banana/companions", F_OK) == 0 && gameComp.open(rom, "/data/banana/companions", sd.id)) ||
+ 				gameComp.open(rom, "/usr/share/banana/companions", sd.id));	// (the card's own first)
+-		if (pkOn || gcOn)
++		if (pkOn || gcOn || (panel && launchBoard == "duolite"))
+ 		{
+ 			unlink(OUT);
+ 			if (mkfifo(OUT, 0600) == 0) outFd = ::open(OUT, O_RDWR | O_NONBLOCK | O_CLOEXEC);
+ 			if (outFd < 0) { logf("companion: no pipe for RetroArch's replies"); companion.close(); gameComp.close(); }
+ 			else if (pkOn) logf("pokemon companion: %s", companion.game()->name);
+-			else logf("game companion: %s (%s)", gameComp.game()->title.c_str(), gameComp.game()->file.c_str());
++			else if (gcOn) logf("game companion: %s (%s)", gameComp.game()->title.c_str(), gameComp.game()->file.c_str());
++            else logf("original menu: emulator reply channel ready");
+ 		}
+ 		// the DS Pokémon companion (alpha; settings.conf nds_companion): no panel of its own beside a DS game, so its
+ 		// pages go to BananaDS through the companion overlay (nds/overlay.h), which BananaDS shows on the bottom screen
+@@ -3584,7 +3649,7 @@ int main(int argc, char** argv)
+ 	}
+ 	worker.finish();
+ 	// not straight after a game: a shutdown from it (the power button held) gives rcK's 3 s to its saves instead
+-	if (shuttingDown && disp.isOpen() && settings["splash"] != "off" && nowMs() - gameEnded > 2000)
++	if (shuttingDown && access("/run/banana/fast-poweroff", F_OK) != 0 && disp.isOpen() && settings["splash"] != "off" && nowMs() - gameEnded > 2000)
+ 	{
+ 		logf("shutdown animation");
+ 		playOutro(disp, be, o, variant, sound);
+diff --git a/ui/src/settings.cpp b/ui/src/settings.cpp
+index ee1ceffb..0b0960e0 100644
+--- a/ui/src/settings.cpp
++++ b/ui/src/settings.cpp
+@@ -409,7 +409,9 @@ namespace banana
+ 		return sig;
+ 	}
+ 
+-	static const char* BACKLIGHT[2] = { "backlight1", "backlight0" };
++	static const char* backlightName(int i) {
++		return board_() == "duolite" ? (i ? "serial0-0" : "backlight") : (i ? "backlight0" : "backlight1");
++	}
+ 	static int backlightPair(const std::string& path, int i)
+ 	{
+ 		int t = 0, b = 0;
+@@ -501,6 +503,14 @@ namespace banana
+ 		add(P, "moon", "Waking up", "How the handheld wakes from sleep.",
+ 			power, "fast_resume", { "Fast", "Careful" }, { "yes", "no" });
+ 		items.back().hints = { "Wakes up quickly.", "Wakes up a little slower, the safest way. Chosen by itself if waking ever goes wrong." };
++		if (board_() == "duolite") {
++			add(P, "moon", "Fan", "The minimum fan speed under the quiet limit. Emergency cooling overrides the limit at 80 C.", power, "fan_profile",
++				{ "Auto", "Low", "Medium", "High" }, { "auto", "low", "medium", "high" });
++			items.back().hints = { "Follows temperature, stopping when cool.", "Quiet minimum speed; increases when hot.", "A steady medium speed; increases when hot.", "A stronger minimum speed; increases when hot." };
++			add(P, "moon", "Indicator", "When the handheld's indicator lights up.", power, "led_mode",
++				{ "Charging only", "Off", "Battery status" }, { "charging", "off", "battery" });
++			items.back().hints = { "Amber while charging, green when full; off on battery.", "The indicator stays off.", "Green on battery, red when low, blinking red when critical; amber while charging." };
++		}
+ 		add(P, "moon", "LEDs", "The lights on the handheld: green, red when the battery is low, amber while charging.", power, "led_brightness",
+ 			{ "Bright", "Dim", "Off" }, { "255", "40", "0" });
+ 		items.back().hints = { "Full brightness.", "Softer lights.", "No lights." };
+@@ -508,9 +518,13 @@ namespace banana
+ 		// then a page for each emulator's own settings, in that emulator's files, both whichever is chosen (to set one up
+ 		// before switching to it). Both draw the DS's 3D with SuperDrastic's Gengis Engine, always (run-drastic, run-bananads).
+ 		const char* N = "Nintendo DS";
++		if (board_() == "duolite") {
++			add(N, "nds", "Emulator", "The DS emulator installed on this handheld.", menu, "nds_emulator", { "BananaDS" }, { "bananads" });
++		} else {
+ 		add(N, "nds", "Emulator", "Which emulator plays DS games. X on a game in the library picks one for that game alone.",
+ 			menu, "nds_emulator", { "SuperDrastic", "BananaDS" }, { "superdrastic", "bananads" });
+ 		items.back().hints = { "DraStic: the fastest. Its own settings are on its page below.", "Banana's own, built on melonDS: the most accurate. Its own settings are on its page below." };
++		}
+ 		add(N, "nds", "Quick resume", "What quitting a game does.",
+ 			menu, "quick_resume", { "Off", "On" }, { "off", "on" });
+ 		items.back().hints = { "Quitting ends the game. Next time it starts from its title screen.", "Quitting keeps your place, even through a shutdown. Next time the game carries on from there." };
+@@ -522,7 +536,7 @@ namespace banana
+ 		// the DS's own name (its firmware's user name), in both emulators at once: what a game calls you (#30)
+ 		add(N, "nds", "DS name", "The name the DS itself is set to: what games call you. 10 characters at most.",
+ 			"", "ds_name", {}, {}, Item::PAGE);
+-		add(N, "nds", "SuperDrastic", "SuperDrastic's own settings: picture, speed, sound and its hotkeys.", "", "nds_superdrastic", {}, {}, Item::PAGE);
++		if (board_() != "duolite") add(N, "nds", "SuperDrastic", "SuperDrastic's own settings: picture, speed, sound and its hotkeys.", "", "nds_superdrastic", {}, {}, Item::PAGE);
+ 		add(N, "nds", "BananaDS", "BananaDS's own settings: picture, speed, sound and its hotkeys.", "", "nds_bananads", {}, {}, Item::PAGE);
+ 		std::vector<std::string> shaderNames, shaderValues;
+ 		shaderChoices(data, shaderNames, shaderValues);
+@@ -533,7 +547,9 @@ namespace banana
+ 		{
+ 			const char* BD = "BananaDS";
+ 			const std::string bds = "/data/bananads/bananads.conf";
+-			add(BD, "nds", "Shader", shaderHelp, bds, "kms.shader", shaderNames, shaderValues);
++			if (board_() == "duolite")
++				add(BD, "nds", "Shader", "Fits each DS screen to its panel while preserving proportions and sharp pixels.", bds, "kms.shader", { "Sharp pixels" }, { "none" });
++			else add(BD, "nds", "Shader", shaderHelp, bds, "kms.shader", shaderNames, shaderValues);
+ 			add(BD, "nds", "3D resolution", "How sharp DS games' 3D is drawn.",
+ 				bds, "render.scale", { "1x", "2x", "3x (experimental)", "4x (experimental)" }, { "1", "2", "3", "4" });
+ 			items.back().def = "2";	// (#250: smallest to largest, left to right; 2x stays the default, as run-bananads writes it)
+@@ -581,7 +597,7 @@ namespace banana
+ 				"", "nds-reset-bananads", { "" }, { "" }, Item::ACTION);
+ 		}
+ 		// the SuperDrastic page (Nintendo DS > SuperDrastic): superdrastic.conf and DraStic's drastic.cfg
+-		{
++		if (board_() != "duolite") {
+ 			const char* SD = "SuperDrastic";
+ 			add(SD, "nds", "Shader", shaderHelp, sd, "DSFLIP_SHADER", shaderNames, shaderValues);
+ 			add(SD, "nds", "3D resolution", "How sharp DS games' 3D is drawn.", dcfg, "hires_3d", { "1x", "2x" }, { "0", "1" });
+@@ -884,6 +900,7 @@ namespace banana
+ 		add(PW, "moon", "Sleep", "Puts the handheld to sleep, as a press of the power button does. Your game pauses. Press A twice.", "", "sleep", { "" }, { "" }, Item::ACTION);
+ 		add(PW, "gear", "Restart", "Restarts the handheld. Press A twice.", "", "reboot", { "" }, { "" }, Item::ACTION);
+ 		add(PW, "gear", "Shut down", "Turns the handheld off. Press A twice. (Or hold the power button.)", "", "poweroff", { "" }, { "" }, Item::ACTION);
++		if (board_() == "duolite") add(PW, "gear", "Fast shut down", "Skips the closing animation. Games still save and the card is unmounted cleanly. Press A twice.", "", "poweroff_fast", { "" }, { "" }, Item::ACTION);
+ 		// the Home server page (Network > Home server)
+ 		const char* HS = "Home server";
+ 		add(HS, "phone", "Server", "", "", "hs_server", {}, {}, Item::PAGE);
+@@ -930,7 +947,7 @@ namespace banana
+ 			{ "Other systems", { "Buttons", "Picture & sound", "Quick resume", "Screen", "Second screen", "Emulators", "Frontend", "RetroAchievements", "Reset RetroArch" } },
+ 			{ "Display & sound", { "Volume", "Speaker EQ", "Top brightness", "Bottom brightness", "Theme", "Accent colour", "Shown systems", "Menu sounds", "Screen colours", "Menu look", "Text on accent" } },
+ 			{ "Network", { "Wi-Fi", "Network", "Bluetooth", "Home server", "File sharing" } },
+-			{ "Sleep & power", { "Sleep when idle", "Closing the lid", "Dim when idle", "Power off after sleeping", "LEDs", "Waking up" } },
++			{ "Sleep & power", { "Sleep when idle", "Closing the lid", "Dim when idle", "Power off after sleeping", "Indicator", "LEDs", "Fan", "Waking up" } },
+ 			{ "System", { "Updates", "Language", "Time zone", "Box art", "Hotkeys", "About", "Credits", "First-time setup", "Reset system settings", "Reset emulator settings" } },
+ 			{ "SuperDrastic", { "Shader", "3D resolution", "CPU clock", "Frame pacing", "Threaded 3D", "Microphone", "Low latency (experimental)", "Hotkeys", "Reset buttons", "Reset DraStic" } },
+ 			{ "BananaDS", { "Shader", "3D resolution", "CPU clock", "Frame pacing", "Timing", "DS CPU speed", "Microphone", "Mic sensitivity", "Edge marking", "Fog", "Low latency (experimental)", "Hotkeys", "Reset BananaDS" } },
+@@ -999,7 +1016,7 @@ namespace banana
+ 			if (pm <= 0) pm = backlightPair(data + "/backlight", i);
+ 			if (pm <= 0)
+ 			{
+-				std::string b = std::string("/sys/class/backlight/") + BACKLIGHT[i];
++				std::string b = std::string("/sys/class/backlight/") + backlightName(i);
+ 				int max = atoi(readLine(b + "/max_brightness").c_str()), cur = atoi(readLine(b + "/brightness").c_str());
+ 				if (max > 0) pm = cur * 1000 / max;
+ 			}
+@@ -1047,6 +1064,7 @@ namespace banana
+ 		{ const char* tv = getenv("BANANA_VERSION"); version = tv ? tv : readLine("/etc/banana/version"); }	// (the tests: as the update script)
+ 		slot = readLine("/run/banana/slot");
+ 		{ const char* tb = getenv("BANANA_BOARD"); board = tb ? tb : readLine("/etc/banana/board"); }
++		if (board == "duolite" && !getenv("BANANA_VERSION")) version = readLine("/etc/banana/release");
+ 		std::string model;
+ 		{
+ 			std::ifstream f("/proc/device-tree/model");
+@@ -1085,6 +1103,8 @@ namespace banana
+ 		}
+ 		std::ostringstream a;
+ 		a << "Banana " << (version.empty() ? "dev" : version) << (slot.empty() ? "" : " (slot " + slot + ")") << " on the " << (model.empty() ? "handheld" : model) << ". ";
++		std::string build = readLine("/etc/banana/build");
++		if (!build.empty()) a << "Build " << build << ". ";
+ 		if (battery >= 0) a << "Battery " << battery << "%. ";
+ 		if (space[0]) a << "Card: " << space << ". ";
+ 		// the kernel too (#70): its version as uname gives it
+@@ -1187,14 +1207,14 @@ namespace banana
+ 		if (it.kind == Item::BRIGHTNESS)
+ 		{
+ 			int pm = atoi(v.c_str()), i = it.key == "bottom" ? 1 : 0;
+-			std::string b = std::string("/sys/class/backlight/") + BACKLIGHT[i];
++			std::string b = std::string("/sys/class/backlight/") + backlightName(i);
+ 			int max = atoi(readLine(b + "/max_brightness").c_str());
+ 			if (max > 0) std::ofstream(b + "/brightness") << std::max(1, (max * pm + 500) / 1000) << "\n";
+ 			// both panels' levels kept for bananad to restore at boot: this one changed, the other as it was
+ 			int other = backlightPair(data + "/backlight", 1 - i);
+ 			if (other <= 0)
+ 			{
+-				std::string o = std::string("/sys/class/backlight/") + BACKLIGHT[1 - i];
++				std::string o = std::string("/sys/class/backlight/") + backlightName(1 - i);
+ 				int omax = atoi(readLine(o + "/max_brightness").c_str());
+ 				other = omax > 0 ? (atoi(readLine(o + "/brightness").c_str()) * 1000 + omax / 2) / omax : pm;
+ 			}
+@@ -1238,7 +1258,7 @@ namespace banana
+ 		}
+ 		if (it.file == data + "/bananad.conf") poke("bananad");
+ 		if (it.key == "timezone") { setenv("TZ", v.c_str(), 1); tzset(); poke("bananad"); }	// bananad's logs too
+-		if (it.key == "wifi") spawn("/usr/libexec/banana/wifi", v == "on" ? "up" : "down");
++		if (it.key == "wifi") spawn(wifiTool.c_str(), v == "on" ? "up" : "down");
+ 		if (it.key == "bluetooth")
+ 		{
+ 			btEnabled = v == "on";
+@@ -1410,7 +1430,7 @@ namespace banana
+ 				armed = -1;
+ 				return resetApply(it.key == "reset_emulator");
+ 			}
+-			return it.key == "reboot" ? REBOOT : POWEROFF;
++			return it.key == "reboot" ? REBOOT : it.key == "poweroff_fast" ? FAST_POWEROFF : POWEROFF;
+ 		}
+ 		int n = (int)it.values.size();
+ 		int at = it.at + dir;
+@@ -1465,7 +1485,7 @@ namespace banana
+ 			// show when the card has no line), the backlights and the mixer's level
+ 			static const struct { const char* key; const char* def; } BANANAD[] = {
+ 				{ "autosleep_minutes", "10" }, { "dim_minutes", "2" }, { "lid_sleep", "yes" },
+-				{ "poweroff_after_sleep_minutes", "0" }, { "fast_resume", "yes" }, { "led_brightness", "128" } };
++				{ "poweroff_after_sleep_minutes", "0" }, { "fast_resume", "yes" }, { "led_brightness", "128" }, { "led_mode", "charging" }, { "fan_profile", "auto" } };
+ 			for (const auto& b : BANANAD)
+ 				setConfValue(data + "/bananad.conf", b.key, getConfValue("/etc/banana/bananad.conf", b.key, b.def));
+ 			if (DIR* d = opendir("/sys/class/backlight"))
+@@ -1484,7 +1504,7 @@ namespace banana
+ 			// the side effects save() runs for keys that live outside settings.conf
+ 			std::map<std::string, std::string> rs = readSettings(data);
+ 			if (!rs["timezone"].empty()) { setenv("TZ", rs["timezone"].c_str(), 1); tzset(); }
+-			spawn("/usr/libexec/banana/wifi", rs["wifi"] == "off" ? "down" : "up");
++			spawn(wifiTool.c_str(), rs["wifi"] == "off" ? "down" : "up");
+ 			spawn("/usr/libexec/banana/ssh", rs["ssh"] == "on" ? "up" : "down");
+ 			spawn("/usr/libexec/banana/share", rs["share"] == "on" ? "up" : "down");
+ 			spawn("/usr/libexec/banana/sd2", "scan");
+@@ -2244,8 +2264,8 @@ namespace banana
+ 		const Item& first = items[groupStart(g0)];
+ 
+ 		be->beginScreen(0);
+-		box("screen", false, 0, 0, 640, 480);
+-		box("hero", false, 18, 20, 604, 436);
++		box("screen", false, 0, 0, topWidth(), 480);
++		box("hero", false, 18, 20, topWidth() - 36, 436);
+ 		icon(groupIcon[first.section], 50, 56, 3);
+ 		text("Settings", true, 17, 170, 62, p.muted, true, 1.4f);
+ 		text(groups[g0], true, 30, 170, 88, p.ink);
+@@ -2308,7 +2328,8 @@ namespace banana
+ 		if (cur.key == "wifi") help = "Wi-Fi: " + wifiInfo + ". Network, below, joins one; networks can also be written in banana/wifi.conf on a computer (see banana/README.txt).";
+ 		if (cur.key == "ssh")
+ 			help = "For working on Banana itself: ssh root@" + (ip.empty() ? std::string("<address>") : ip) +
+-				", with the public keys in banana/ssh/authorized_keys on the card (no passwords). Files: scp -O (dropbear has no SFTP), or File sharing.";
++				(board_() == "duolite" ? ", password rocknix. Public keys are optional." : ", with the public keys in banana/ssh/authorized_keys on the card (no passwords).") +
++				" Files: scp -O (dropbear has no SFTP), or File sharing.";
+ 		if (cur.key == "hs_server")
+ 		{
+ 			std::string n = homeServer();
+@@ -2373,7 +2394,7 @@ namespace banana
+ 		{
+ 			st.size = z;
+ 			size = z;
+-			lines = R ? (int)rnds::layoutWrap(rnds::utf8to32(t), st, (int)HELP_W, 0).size() : 0;
++			lines = R ? (int)rnds::layoutWrap(rnds::utf8to32(t), st, (int)(topWidth() - 100), 0).size() : 0;
+ 			if ((lines - 1) * std::round(z * 1.4f) + z * 1.3f <= bottom - top) return true;
+ 		}
+ 		return false;
+@@ -2383,7 +2404,7 @@ namespace banana
+ 		float z; int n;
+ 		bool ok = helpFit(t, top, bottom, z, n);
+ 		int maxLines = ok ? n : std::max(1, (int)((bottom - top - z * 1.3f) / std::round(z * 1.4f)) + 1);
+-		wrapped(t, z, HELP_X, top, HELP_W, maxLines, c);
++		wrapped(t, z, HELP_X, top, topWidth() - 100, maxLines, c);
+ 	}
+ 
+ 	int Settings::helpCheck(const std::function<void(const std::string&)>& log)
+@@ -2463,8 +2484,8 @@ namespace banana
+ 
+ 		// ---- top: what the selected setting is ----
+ 		be->beginScreen(0);
+-		box("screen", false, 0, 0, 640, 480);
+-		box("hero", false, 18, 20, 604, 436);
++		box("screen", false, 0, 0, topWidth(), 480);
++		box("hero", false, 18, 20, topWidth() - 36, 436);
+ 		// the header (icon, section, name, value) kept tight so the help under it has ten lines (user feedback 2026-10-25: the
+ 		// Shader row's was cut at seven)
+ 		icon(cur.icon, 50, HEAD_ICON_Y, 3);
+@@ -3098,8 +3119,8 @@ namespace banana
+ 		SPal p = pal(light);
+ 		const wifi::Network* cur = nsel < (int)nets.size() ? &nets[nsel] : nullptr;
+ 		be->beginScreen(0);
+-		box("screen", false, 0, 0, 640, 480);
+-		box("hero", false, 18, 20, 604, 436);
++		box("screen", false, 0, 0, topWidth(), 480);
++		box("hero", false, 18, 20, topWidth() - 36, 436);
+ 		icon("phone", 50, 56, 3);
+ 		text("Network", true, 17, 170, 62, p.muted, true, 1.4f);
+ 		text("Wi-Fi networks", true, 30, 170, 88, p.ink);
+@@ -3317,8 +3338,8 @@ namespace banana
+ 		SPal p = pal(light);
+ 		const bt::Device* cur = bsel < (int)btDevs.size() ? &btDevs[bsel] : nullptr;
+ 		be->beginScreen(0);
+-		box("screen", false, 0, 0, 640, 480);
+-		box("hero", false, 18, 20, 604, 436);
++		box("screen", false, 0, 0, topWidth(), 480);
++		box("hero", false, 18, 20, topWidth() - 36, 436);
+ 		icon("phone", 50, 56, 3);
+ 		text("Network", true, 17, 170, 62, p.muted, true, 1.4f);
+ 		text("Bluetooth devices", true, 30, 170, 88, p.ink);
+@@ -3377,19 +3398,20 @@ namespace banana
+ 	void Settings::renderKeyboard()
+ 	{
+ 		SPal p = pal(light);
++		const float fieldWidth = topWidth() - 100;
+ 		be->beginScreen(0);
+-		box("screen", false, 0, 0, 640, 480);
+-		box("hero", false, 18, 20, 604, 436);
++		box("screen", false, 0, 0, topWidth(), 480);
++		box("hero", false, 18, 20, topWidth() - 36, 436);
+ 		icon(entry == ENTRY_SEARCH ? "search" : entry == ENTRY_FOLDER || entry == ENTRY_RENAME || entry == ENTRY_SERVER ? "files" : entry == ENTRY_BSHARE_PIN || entry == ENTRY_BSHARE_MYPIN ? "bshare" : "phone", 50, 56, 3);
+ 		text(entryTitle, true, 17, 170, 62, p.muted, true, 1.4f);
+-		text(fit(entrySub, true, 30, 420), true, 30, 170, 88, p.ink);
+-		box("slot", true, 50, 150, 540, 56);
++		text(fit(entrySub, true, 30, topWidth() - 220), true, 30, 170, 88, p.ink);
++		box("slot", true, 50, 150, fieldWidth, 56);
+ 		// the end of the password when it is longer than the field
+ 		float w = 0;
+ 		if (!pw.empty())	// (what was typed, as it is)
+ 		{
+ 			AsNamed named(*this);
+-			std::string shown = fitEnd(pw, true, 22, 480);
++			std::string shown = fitEnd(pw, true, 22, fieldWidth - 60);
+ 			w = text(shown, true, 22, 0, 0, p.ink, false, 0, true);
+ 			text(shown, true, 22, 70, 165, p.ink);
+ 		}
+@@ -3412,7 +3434,7 @@ namespace banana
+ 			: entry == ENTRY_GAME_NAME || entry == ENTRY_GAME_SORT ? "A types the key, B deletes, X capitals, L symbols, Y a space, START when it is typed. Kept in banana/game-titles.tsv on the card."
+ 			: entry == ENTRY_ART_SEARCH ? "A types the key, B deletes, X capitals, L symbols, Y a space, START looks. A few words of the name are enough: the closest names come first."
+ 			: "A types the key, B deletes, X capitals, L symbols, Y a space, START when it is typed. Or tap the keys. Accounts are kept in banana/accounts.conf on the card.";
+-		wrapped(help, 20, 50, 252, 540, 6, message.empty() ? p.muted : p.accent);
++		wrapped(help, 20, 50, 252, fieldWidth, 6, message.empty() ? p.muted : p.accent);
+ 		be->endScreen();
+ 
+ 		be->beginScreen(1);
+@@ -3493,6 +3515,7 @@ namespace banana
+ 		{ const char* tv = getenv("BANANA_VERSION"); version = tv ? tv : readLine("/etc/banana/version"); }
+ 		slot = readLine(runDir + "/slot");
+ 		{ const char* tb = getenv("BANANA_BOARD"); board = tb ? tb : readLine("/etc/banana/board"); }
++		if (board == "duolite" && !getenv("BANANA_VERSION")) version = readLine("/etc/banana/release");
+ 		listPkgs();
+ 		readOnline();
+ 		downloading = false;
+@@ -3657,6 +3680,7 @@ namespace banana
+ 
+ 	bool Settings::betaOn() const
+ 	{
++		if (board == "duolite") return false;
+ 		// the password kept (.beta) and the channel not turned off since (.channel says "github" then: the password stays)
+ 		return betaKept() && readLine(updatesDir + "/.channel") != "github";
+ 	}
+@@ -3689,6 +3713,11 @@ namespace banana
+ 
+ 	Settings::Result Settings::pressBeta()
+ 	{
++		if (board == "duolite")
++		{
++			message = "Duo Lite updates come from github.com/rzrbld/bananaos_duo/releases. Test versions are controlled in System settings.";
++			return MOVED;
++		}
+ 		if (betaJob.running() || downloading || checkJob.running()) return NONE;
+ 		if (!betaOn())
+ 		{
+@@ -3984,9 +4013,9 @@ namespace banana
+ 		// the top screen: the pattern, its name on a strip at the top
+ 		be->beginScreen(0);
+ 		colorsPattern(0, 0, 480);
+-		be->fill(0, 0, X(640), X(30), Color::hex(0x101014));
++		be->fill(0, 0, X(topWidth()), X(30), Color::hex(0x101014));
+ 		text(std::string("Screen colours  ·  ") + COL_PATTERNS[colPattern] + "  ·  L / R: another pattern", true, 15, 12, 7, Color::hex(0xd0d0d0));
+-		be->fill(0, X(450), X(640), X(30), Color::hex(0x101014));
++		be->fill(0, X(450), X(topWidth()), X(30), Color::hex(0x101014));
+ 		std::string hint = !message.empty() ? message : "Make the screen you correct look like the other one. X: no correction.";
+ 		text(fit(hint, true, 14, 616), true, 14, 12, 457, Color::hex(0xd0d0d0));
+ 		be->endScreen();
+@@ -4163,7 +4192,7 @@ namespace banana
+ 
+ 		// the top screen: the curve the speakers play through now, 100 Hz to 20 kHz, -20 to +20 dB
+ 		be->beginScreen(0);
+-		box("screen", false, 0, 0, 640, 480);
++		box("screen", false, 0, 0, topWidth(), 480);
+ 		text("Speaker EQ", true, 20, 24, 18, p.ink, true, 1.2f);
+ 		std::string state = eqEdit.on ? profileName : "Off";
+ 		float sw = text(state, true, 18, 0, 0, p.accent, false, 0, true);
+@@ -4307,8 +4336,8 @@ namespace banana
+ 		SPal p = pal(light);
+ 		bool busy = artJob.running();
+ 		be->beginScreen(0);
+-		box("screen", false, 0, 0, 640, 480);
+-		box("hero", false, 18, 20, 604, 436);
++		box("screen", false, 0, 0, topWidth(), 480);
++		box("hero", false, 18, 20, topWidth() - 36, 436);
+ 		icon("picture", 50, 56, 3);
+ 		text("Box art for", true, 17, 170, 62, p.muted, true, 1.4f);
+ 		{ AsNamed named(*this); text(fit(pgTitle, true, 30, 420), true, 30, 170, 88, p.ink); }
+@@ -4380,7 +4409,7 @@ namespace banana
+ 			return MOVED;
+ 		}
+ 		case Key::X:
+-			if (usel == 1 && betaKept() && !betaJob.running() && !downloading && !checkJob.running())
++			if (usel == 1 && board != "duolite" && betaKept() && !betaJob.running() && !downloading && !checkJob.running())
+ 			{
+ 				// X, X: the kept beta password forgotten (the channel off; A asks for it again)
+ 				if (armed != 3001) { armed = 3001; return MOVED; }
+@@ -4438,8 +4467,8 @@ namespace banana
+ 		const std::string handheld = bd == "rgds-plus" ? "RG DS Plus" : bd == "rgds" ? "RG DS" : "handheld";
+ 		auto mb = [](long long b) { return std::to_string((b + 524288) / 1048576); };
+ 		be->beginScreen(0);
+-		box("screen", false, 0, 0, 640, 480);
+-		box("hero", false, 18, 20, 604, 436);
++		box("screen", false, 0, 0, topWidth(), 480);
++		box("hero", false, 18, 20, topWidth() - 36, 436);
+ 		icon("gear", 50, 56, 3);
+ 		text("System", true, 17, 170, 62, p.muted, true, 1.4f);
+ 		text("Update", true, 30, 170, 88, p.ink);
+@@ -4482,7 +4511,8 @@ namespace banana
+ 		}
+ 		else if (usel == 1)
+ 		{
+-			if (betaJob.running()) help = "Checking the password with bananaos-cfw.dev...";
++			if (board == "duolite") help = "Updates come from github.com/rzrbld/bananaos_duo/releases. Enable Test versions to include alpha builds. The installed version stays in the other slot for recovery.";
++			else if (betaJob.running()) help = "Checking the password with bananaos-cfw.dev...";
+ 			else if (!message.empty()) help = message;
+ 			else if (betaOn()) help = "Two channels: GitHub's releases, or the beta testers' builds on bananaos-cfw.dev. On: the beta builds. A, then A again, turns it off (GitHub again); the password is kept for turning it back on. X twice forgets the password.";
+ 			else if (betaKept()) help = "Two channels: GitHub's releases (now), or the beta testers' builds on bananaos-cfw.dev. A turns the beta channel on again with the password kept on the card; X twice forgets the password.";
+@@ -4528,6 +4558,7 @@ namespace banana
+ 				name = "Beta channel";
+ 				hot = armed == 3000 || betaJob.running();
+ 				tag = betaJob.running() ? "Checking..." : armed == 3000 ? "Press A again" : armed == 3001 ? "Press X again: forget" : betaOn() ? "On" : betaKept() ? "Off (password kept)" : "Off";
++				if (board == "duolite") { name = "Release source"; tag = "Duo Lite GitHub"; hot = false; }
+ 			}
+ 			else
+ 			{
+@@ -4544,6 +4575,7 @@ namespace banana
+ 		float bw = faceWidth("B", "Back");
+ 		if (!applying) face("B", "Back", 18, bw);
+ 		std::string act = updated ? "Restart" : applying ? "" : usel == 0 ? oact
++			: usel == 1 && board == "duolite" ? "Details"
+ 			: usel == 1 ? (betaJob.running() ? "" : !betaOn() ? "Turn on" : armed == 3000 ? "Confirm" : "Turn off")
+ 			: armed == 1000 + usel - 2 ? "Confirm" : "Update";
+ 		if (!act.empty())
+@@ -4634,8 +4666,8 @@ namespace banana
+ 		const int VIS = 8;
+ 		const std::string ver = readLine("/etc/banana/version");
+ 		be->beginScreen(0);
+-		box("screen", false, 0, 0, 640, 480);
+-		box("hero", false, 18, 20, 604, 436);
++		box("screen", false, 0, 0, topWidth(), 480);
++		box("hero", false, 18, 20, topWidth() - 36, 436);
+ 		icon("gear", 50, 56, 3);
+ 		text("Credits", true, 17, 170, 62, p.muted, true, 1.4f);
+ 		text(fit("BananaOS " + (ver.empty() ? std::string("dev") : ver), true, 30, 420), true, 30, 170, 88, p.ink);
+@@ -4808,8 +4840,8 @@ namespace banana
+ 		long long chosenBytes = 0; int chosenN = 0;
+ 		for (auto& g : pickGames) if (g.on) { chosenBytes += g.bytes; chosenN++; }
+ 		be->beginScreen(0);
+-		box("screen", false, 0, 0, 640, 480);
+-		box("hero", false, 18, 20, 604, 436);
++		box("screen", false, 0, 0, topWidth(), 480);
++		box("hero", false, 18, 20, topWidth() - 36, 436);
+ 		icon("phone", 50, 56, 3);
+ 		text("Home server", true, 17, 170, 62, p.muted, true, 1.4f);
+ 		text("Choose games", true, 30, 170, 88, p.ink);
+@@ -5009,8 +5041,8 @@ namespace banana
+ 		for (auto& it : items) if (it.key == "theme") cur = it.at;
+ 		const std::string& v = thValues.empty() ? std::string() : thValues[thSel];
+ 		be->beginScreen(0);
+-		box("screen", false, 0, 0, 640, 480);
+-		box("hero", false, 18, 20, 604, 436);
++		box("screen", false, 0, 0, topWidth(), 480);
++		box("hero", false, 18, 20, topWidth() - 36, 436);
+ 		icon("picture", 50, 56, 3);
+ 		text("Theme", true, 17, 170, 62, p.muted, true, 1.4f);
+ 		if (!thNames.empty()) text(fit(thNames[thSel], true, 30, 420), true, 30, 170, 88, p.ink);
+@@ -5137,8 +5169,8 @@ namespace banana
+ 		};
+ 
+ 		be->beginScreen(0);
+-		box("screen", false, 0, 0, 640, 480);
+-		box("hero", false, 18, 20, 604, 436);
++		box("screen", false, 0, 0, topWidth(), 480);
++		box("hero", false, 18, 20, topWidth() - 36, 436);
+ 		icon("gear", 50, 56, 3);
+ 		text("Language", true, 17, 170, 62, p.muted, true, 1.4f);
+ 		raw(fit(L.name, true, 30, 420), true, 30, 170, 88, p.ink);
+@@ -5223,8 +5255,8 @@ namespace banana
+ 		const std::string Q = "Change the menu's language?", N = "No, keep it", Y = "Yes, change it";
+ 
+ 		be->beginScreen(0);
+-		box("screen", false, 0, 0, 640, 480);
+-		box("hero", false, 18, 20, 604, 436);
++		box("screen", false, 0, 0, topWidth(), 480);
++		box("hero", false, 18, 20, topWidth() - 36, 436);
+ 		centred(here(Q), true, 26, 120, p.ink);
+ 		centred(there(Q), true, 26, 168, p.ink);
+ 		centred(fromName + "  >  " + toName, true, 24, 250, p.accent);
+@@ -5307,8 +5339,8 @@ namespace banana
+ 	{
+ 		SPal p = pal(light);
+ 		be->beginScreen(0);
+-		box("screen", false, 0, 0, 640, 480);
+-		box("hero", false, 18, 20, 604, 436);
++		box("screen", false, 0, 0, topWidth(), 480);
++		box("hero", false, 18, 20, topWidth() - 36, 436);
+ 		icon("nds", 50, 56, 3);
+ 		text(hotAsk == 2 ? "This game's 3D resolution" : "3D resolution", true, 17, 170, 62, p.muted, true, 1.4f);
+ 		text("4x runs hot", true, 30, 170, 88, p.ink);
+@@ -5344,7 +5376,7 @@ namespace banana
+ 		};
+ 
+ 		be->beginScreen(0);
+-		box("screen", false, 0, 0, 640, 480);
++		box("screen", false, 0, 0, topWidth(), 480);
+ 		centred(title, true, 30, 196, p.ink);
+ 		centred(applying ? "Don't turn the handheld off" : ver, true, 20, 244, p.muted);
+ 		be->endScreen();
+@@ -5858,8 +5890,8 @@ namespace banana
+ 			: std::string(pgArtDone ? "Fetched" : "Find it by name"); };
+ 
+ 		be->beginScreen(0);
+-		box("screen", false, 0, 0, 640, 480);
+-		box("hero", false, 18, 20, 604, 436);
++		box("screen", false, 0, 0, topWidth(), 480);
++		box("hero", false, 18, 20, topWidth() - 36, 436);
+ 		icon(pgNds ? "nds" : "gamepad", 50, HEAD_ICON_Y, 3);
+ 		text(row == PG_EMU ? "This game's emulator" : row == PG_SHADER ? "This game's shader" : row == PG_3D ? "This game's 3D" : row == PG_RES ? "This game's 3D resolution" : row == PG_MIC ? "This game's microphone" : row == PG_TIMING ? "This game's timing" : row == PG_CPU ? "This game's DS CPU speed" : row == PG_NAME ? "This game's name" : row == PG_SORT ? "This game's sort title" : row == PG_DELETE ? "Delete this game" : row == PG_ACH ? "This game's achievements" : "This game's box art",
+ 			true, 17, 170, HEAD_SECTION_Y, p.muted, true, 1.4f);
+@@ -6660,8 +6692,8 @@ namespace banana
+ 
+ 		// ---- top panel: the step, its title and state, what it is for, the result ----
+ 		be->beginScreen(0);
+-		box("screen", false, 0, 0, 640, 480);
+-		box("hero", false, 18, 20, 604, 436);
++		box("screen", false, 0, 0, topWidth(), 480);
++		box("hero", false, 18, 20, topWidth() - 36, 436);
+ 		icon(icons[sl], 50, 52, 3);
+ 		std::string stepLine = lang::tr("First-time setup") + "  \xc2\xb7  " + lang::tr("Step {n} of {m}");
+ 		for (auto [k, v] : { std::pair<std::string, std::string>{ "{n}", std::to_string(wsel + 1) }, { "{m}", std::to_string(nSteps) } })
+@@ -6791,7 +6823,7 @@ namespace banana
+ 	{
+ 		SPal p = pal(light);
+ 		be->beginScreen(0);
+-		be->fill(0, 0, X(640), X(480), Color::hex(0x000000));
++		be->fill(0, 0, X(topWidth()), X(480), Color::hex(0x000000));
+ 		float w = text(l1, true, size, 0, 0, p.ink, false, 0, true);
+ 		text(l1, true, size, std::round(320 - w / 2), y, Color::hex(0xf1ede2));
+ 		if (!l2.empty())
+diff --git a/ui/src/settings.h b/ui/src/settings.h
+index 7ec77aff..89fa31b4 100644
+--- a/ui/src/settings.h
++++ b/ui/src/settings.h
+@@ -123,6 +123,8 @@ namespace banana
+ 		// dimmed bottom panel, as a touch does (gameplay buttons don't)
+ 		bool gameWake() { bool w = wake; wake = false; return w; }
+ 		void gameRender();
++		void gameMenuRequest();
++        bool takeGameMenuRequest() { bool v = gMenuRequested; gMenuRequested = false; return v; }
+ 		GameAction gameTouch(float x, float y, bool down);	// device px on the panel's screen
+ 		bool gameKeysOpen() const { return gKeysOpen; }	// (tests: the panel's keyboard page is up)
+ 		// (tests: what the GBA Pokémon companion's panel shows: "game" (the tiles), "pages:<page>", "" without one; the
+@@ -158,7 +160,7 @@ namespace banana
+ 
+ 		// what the host has to do after an input (ACTED: a page did something that changes no setting, as Files' copy or
+ 		// rename: the select sound alone, not CHANGED's settings.conf read again and the menu's texts made again)
+-		enum Result { NONE, MOVED, CHANGED, CLOSED, THEME, REBOOT, POWEROFF, SEARCH, TITLES, LANGUAGE, DELETED, SHELVES, ACTED };
++		enum Result { NONE, MOVED, CHANGED, CLOSED, THEME, REBOOT, POWEROFF, FAST_POWEROFF, SEARCH, TITLES, LANGUAGE, DELETED, SHELVES, ACTED };
+ 		// DELETED: the game page's Delete game removed the ROM (deletedFiles says what went): the library read again
+ 		// SELECT in the menu: the keyboard alone, for a search of the games; SEARCH when it is done, with the text in
+ 		// searchText (empty: the search taken away)
+@@ -625,6 +627,7 @@ namespace banana
+ 
+ 		// drawing, in CSS px of a 640x480 panel
+ 		float X(float v) const { return v * s; }
++		float topWidth() const { return be && be->screenWidth(0) > 0 ? be->screenWidth(0) / s : 640.0f; }
+ 		// motion: the list's highlight and scroll ease toward sel and top (in rows), the groups' highlight toward gsel
+ 		// (column and row); advanced at each render by the time since the last one
+ 		float aPick = -1, aTop = -1, aCol = -1, aRow = -1;
+@@ -740,6 +743,7 @@ namespace banana
+ 		// opens the pages, a tap types the key into the game
+ 		VirtualKeyboard* vkbd = nullptr;
+ 		bool gKeysOpen = false;
++        bool gNativeMenu = false, gMenuRequested = false;
+ 		int gKeyPage = 0, gKeyShift = 0;
+ 		std::string gKeyTyped;
+ 		void gameKeysFrame(const SPal& p);
+diff --git a/ui/src/settings_achievements.cpp b/ui/src/settings_achievements.cpp
+index a87b0f44..e1cde4de 100644
+--- a/ui/src/settings_achievements.cpp
++++ b/ui/src/settings_achievements.cpp
+@@ -271,8 +271,8 @@ namespace banana
+ 
+ 		// ---- top: the game, its progress, the achievement picked in full
+ 		be->beginScreen(0);
+-		box("screen", false, 0, 0, 640, 480);
+-		box("hero", false, 18, 20, 604, 436);
++		box("screen", false, 0, 0, topWidth(), 480);
++		box("hero", false, 18, 20, topWidth() - 36, 436);
+ 		icon(pgNds ? "nds" : "gamepad", 50, HEAD_ICON_Y, 3);
+ 		std::string head = lang::tr("Achievements");
+ 		if (ready && sn.offline) head += SEP + achAsOf(l);
+diff --git a/ui/src/settings_bshare.cpp b/ui/src/settings_bshare.cpp
+index e9b10b7d..d1829403 100644
+--- a/ui/src/settings_bshare.cpp
++++ b/ui/src/settings_bshare.cpp
+@@ -859,18 +859,18 @@ namespace banana
+ 			Top t = topPanel(r);
+ 			rnds::Backend* be = ui->be;
+ 			be->beginScreen(0);
+-			ui->box("screen", false, 0, 0, 640, 480);
+-			ui->box("hero", false, 18, 20, 604, 436);
++			ui->box("screen", false, 0, 0, ui->topWidth(), 480);
++			ui->box("hero", false, 18, 20, ui->topWidth() - 36, 436);
+ 			ui->icon("bshare", 50, 56, 3);
+-			ui->text(ui->fit(t.label, true, 17, 420), true, 17, 170, 62, p.muted, true, 1.4f);
+-			ui->text(ui->fit(t.title.empty() ? " " : t.title, true, 30, 420), true, 30, 170, 88, p.ink);
+-			if (!t.accent.empty()) ui->text(ui->fit(t.accent, true, 22, 420), true, 22, 170, 130, p.accent);
+-			ui->wrapped(t.help, 20, 50, 196, 540, t.hint.empty() && t.a < 0 ? 10 : 3, message.empty() ? p.muted : p.ink);
+-			if (!t.hint.empty()) ui->wrapped(t.hint, 20, 50, Settings::HINT_TOP, 540, 5, p.ink);
++			ui->text(ui->fit(t.label, true, 17, ui->topWidth() - 220), true, 17, 170, 62, p.muted, true, 1.4f);
++			ui->text(ui->fit(t.title.empty() ? " " : t.title, true, 30, ui->topWidth() - 220), true, 30, 170, 88, p.ink);
++			if (!t.accent.empty()) ui->text(ui->fit(t.accent, true, 22, ui->topWidth() - 220), true, 22, 170, 130, p.accent);
++			ui->wrapped(t.help, 20, 50, 196, ui->topWidth() - 100, t.hint.empty() && t.a < 0 ? 10 : 3, message.empty() ? p.muted : p.ink);
++			if (!t.hint.empty()) ui->wrapped(t.hint, 20, 50, Settings::HINT_TOP, ui->topWidth() - 100, 5, p.ink);
+ 			if (t.a >= 0)
+ 			{
+-				ui->meter(50, 316, 540, t.a);
+-				ui->text(ui->fit(t.aLabel, false, 16, 540), false, 16, 50, 338, p.muted);
++				ui->meter(50, 316, ui->topWidth() - 100, t.a);
++				ui->text(ui->fit(t.aLabel, false, 16, ui->topWidth() - 100), false, 16, 50, 338, p.muted);
+ 			}
+ 			be->endScreen();
+ 
+diff --git a/ui/src/settings_files.cpp b/ui/src/settings_files.cpp
+index 5c8640f9..ff4cd06b 100644
+--- a/ui/src/settings_files.cpp
++++ b/ui/src/settings_files.cpp
+@@ -1064,17 +1064,17 @@ namespace banana
+ 			Top t = topPanel(r);
+ 			rnds::Backend* be = ui->be;
+ 			be->beginScreen(0);
+-			ui->box("screen", false, 0, 0, 640, 480);
+-			ui->box("hero", false, 18, 20, 604, 436);
++			ui->box("screen", false, 0, 0, ui->topWidth(), 480);
++			ui->box("hero", false, 18, 20, ui->topWidth() - 36, 436);
+ 			ui->icon("files", 50, 56, 3);
+-			ui->text(headerPath(t.label, 17, 420, true, 1.4f), true, 17, 170, 62, p.muted, true, 1.4f);
+-			ui->text(ui->fit(t.title.empty() ? " " : t.title, true, 30, 420), true, 30, 170, 88, p.ink);
+-			if (!t.accent.empty()) ui->text(ui->fit(t.accent, true, 22, 420), true, 22, 170, 130, p.accent);
+-			ui->wrapped(t.help, 20, 50, 196, 540, t.meter ? 4 : 10, p.muted);
++			ui->text(headerPath(t.label, 17, ui->topWidth() - 220, true, 1.4f), true, 17, 170, 62, p.muted, true, 1.4f);
++			ui->text(ui->fit(t.title.empty() ? " " : t.title, true, 30, ui->topWidth() - 220), true, 30, 170, 88, p.ink);
++			if (!t.accent.empty()) ui->text(ui->fit(t.accent, true, 22, ui->topWidth() - 220), true, 22, 170, 130, p.accent);
++			ui->wrapped(t.help, 20, 50, 196, ui->topWidth() - 100, t.meter ? 4 : 10, p.muted);
+ 			if (t.meter)
+ 			{
+-				ui->meter(50, 330, 540, t.fraction);
+-				if (!t.meterLine.empty()) ui->text(ui->fit(t.meterLine, false, 18, 540), false, 18, 50, 354, p.muted);
++				ui->meter(50, 330, ui->topWidth() - 100, t.fraction);
++				if (!t.meterLine.empty()) ui->text(ui->fit(t.meterLine, false, 18, ui->topWidth() - 100), false, 18, 50, 354, p.muted);
+ 			}
+ 			be->endScreen();
+ 
+diff --git a/ui/src/settings_gamepanel.cpp b/ui/src/settings_gamepanel.cpp
+index 20f87764..fe986f3a 100644
+--- a/ui/src/settings_gamepanel.cpp
++++ b/ui/src/settings_gamepanel.cpp
+@@ -359,6 +359,8 @@ namespace banana
+ 	void Settings::gameOpen(const std::string& title, const std::string& system, int screen, bool touch)
+ 	{
+ 		gTitle = title; gSystem = system; gScreen = screen; gTouch = touch;
++        std::string board; std::ifstream("/etc/banana/board") >> board;
++        gNativeMenu = board == "duolite"; gMenuRequested = false;
+ 		gFlash = gDown = -1; gSeen = -1; awardsSeen = 0; wake = false;
+ 		gKeysOpen = false; gKeyPage = 0; gKeyShift = 0; gKeyTyped.clear();
+ 		gcView = gcLast = gcomp::P_STATUS; gcScreen = 0; gcScreens = 1; gcList = gcRow = -1; gcBattle = false; gcHits.clear();
+@@ -743,6 +745,7 @@ namespace banana
+ 	Settings::GameAction Settings::gameTouch(float x, float y, bool down)
+ 	{
+ 		float lx = x / s, ly = y / s;
++
+ 		int hit = -1;
+ 		// the on-screen keyboard (the Keys tile): a key types on the press, the bar's pages and Done on the release
+ 		if (gKeysOpen)
+@@ -875,9 +878,12 @@ namespace banana
+ 			fprintf(stderr, "game panel: keyboard open (%s)\n", vkbd && vkbd->ready() ? "the virtual keyboard is there" : "no virtual keyboard");
+ 			return G_NONE;
+ 		}
++		if (hit == 2 && gNativeMenu) { gameMenuRequest(); return G_NONE; }
+ 		return acts[hit];
+ 	}
+ 
++    void Settings::gameMenuRequest() { if (gNativeMenu) gMenuRequested = true; }
++
+ 	void Settings::gameKeyTap(int code, bool shift, const char* label)
+ 	{
+ 		if (code == -1) { gKeyShift ^= 1; return; }	// the shift toggle (sticky: shift then the letters)
+diff --git a/ui/src/settings_servers.cpp b/ui/src/settings_servers.cpp
+index 839c31d0..1b0dcc50 100644
+--- a/ui/src/settings_servers.cpp
++++ b/ui/src/settings_servers.cpp
+@@ -1714,18 +1714,18 @@ namespace banana
+ 			Top t = topPanel(r);
+ 			rnds::Backend* be = ui->be;
+ 			be->beginScreen(0);
+-			ui->box("screen", false, 0, 0, 640, 480);
+-			ui->box("hero", false, 18, 20, 604, 436);
++			ui->box("screen", false, 0, 0, ui->topWidth(), 480);
++			ui->box("hero", false, 18, 20, ui->topWidth() - 36, 436);
+ 			ui->icon("files", 50, 56, 3);
+-			ui->text(ui->fit(t.label, true, 17, 420, true, 1.4f), true, 17, 170, 62, p.muted, true, 1.4f);
+-			ui->text(ui->fit(t.title.empty() ? " " : t.title, true, 30, 420), true, 30, 170, 88, p.ink);
+-			if (!t.accent.empty()) ui->text(ui->fit(t.accent, true, 22, 420), true, 22, 170, 130, p.accent);
+-			ui->wrapped(t.help, 20, 50, 196, 540, t.meters ? 4 : 10, message.empty() ? p.muted : p.ink);
++			ui->text(ui->fit(t.label, true, 17, ui->topWidth() - 220, true, 1.4f), true, 17, 170, 62, p.muted, true, 1.4f);
++			ui->text(ui->fit(t.title.empty() ? " " : t.title, true, 30, ui->topWidth() - 220), true, 30, 170, 88, p.ink);
++			if (!t.accent.empty()) ui->text(ui->fit(t.accent, true, 22, ui->topWidth() - 220), true, 22, 170, 130, p.accent);
++			ui->wrapped(t.help, 20, 50, 196, ui->topWidth() - 100, t.meters ? 4 : 10, message.empty() ? p.muted : p.ink);
+ 			if (t.meters)
+ 			{
+-				ui->meter(50, 316, 540, t.file);
+-				ui->text(ui->fit(t.fileLabel, false, 16, 540), false, 16, 50, 338, p.muted);
+-				ui->meter(50, 376, 540, t.all);
++				ui->meter(50, 316, ui->topWidth() - 100, t.file);
++				ui->text(ui->fit(t.fileLabel, false, 16, ui->topWidth() - 100), false, 16, 50, 338, p.muted);
++				ui->meter(50, 376, ui->topWidth() - 100, t.all);
+ 				ui->text(plural((long long)outcomes.size(), "done", "done") + " of " + std::to_string(st.n), false, 16, 50, 398, p.muted);
+ 			}
+ 			be->endScreen();
+diff --git a/ui/src/soft.cpp b/ui/src/soft.cpp
+index e29a2d32..c6e8aaf3 100644
+--- a/ui/src/soft.cpp
++++ b/ui/src/soft.cpp
+@@ -167,12 +167,12 @@ namespace banana
+ 	static_assert(__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__, "the alpha byte is read from the words' memory");
+ 	static void encodeRuns(SoftTex& t) { encodeRuns(t, (const uint8_t*)t.px.data() + 3, 4, (size_t)t.w * 4); }
+ 
+-	SoftBackend::SoftBackend(int w, int h) : W(w), H(h)
++	SoftBackend::SoftBackend(int w, int h, int topWidth) : W(w), H(h), widths{ topWidth > 0 ? topWidth : w, w }
+ 	{
+ 		for (int s = 0; s < 2; s++)
+ 		{
+-			scr[s].assign((size_t)W * H, 0xff000000u);
+-			dmg[s] = { 0, 0, W, H };
++			scr[s].assign((size_t)widths[s] * H, 0xff000000u);
++			dmg[s] = { 0, 0, widths[s], H };
+ 		}
+ 	}
+ 
+@@ -206,6 +206,7 @@ namespace banana
+ 	void SoftBackend::beginScreen(int screen)
+ 	{
+ 		cur = screen;
++		W = widths[screen];
+ 		rec[cur].clear();
+ 	}
+ 
+diff --git a/ui/src/soft.h b/ui/src/soft.h
+index 746add49..211cbbde 100644
+--- a/ui/src/soft.h
++++ b/ui/src/soft.h
+@@ -51,8 +51,9 @@ namespace banana
+ 	class SoftBackend : public rnds::Backend
+ 	{
+ 	public:
+-		SoftBackend(int w, int h);
+-		int width() const { return W; }
++		SoftBackend(int w, int h, int topWidth = 0);
++		int width(int screen = 1) const { return widths[screen]; }
++		int screenWidth(int screen) const override { return widths[screen]; }
+ 		int height() const { return H; }
+ 		// the composed screen, 0xXXRRGGBB rows of W words
+ 		const uint32_t* pixels(int screen) const { return scr[screen].data(); }
+@@ -60,10 +61,10 @@ namespace banana
+ 		Damage takeDamage(int screen) { Damage d = dmg[screen]; dmg[screen] = Damage(); return d; }
+ 		// everything again (new scanout buffers): the next frame is drawn in full
+ 		// (the background copy goes too: it is another screen's draws now - a game's panel, 2026-11-03)
+-		void invalidate() { for (int s = 0; s < 2; s++) { dmg[s] = { 0, 0, W, H }; last[s].clear(); full[s] = true; dropBase(s); } }
++		void invalidate() { for (int s = 0; s < 2; s++) { dmg[s] = { 0, 0, widths[s], H }; last[s].clear(); full[s] = true; dropBase(s); } }
+ 		// a screen's pixels to draw on directly (the boot animation): all of it counts as changed, and the engine's
+ 		// next frame is drawn over all of it
+-		uint32_t* canvas(int screen) { dmg[screen] = { 0, 0, W, H }; last[screen].clear(); full[screen] = true; dropBase(screen); return scr[screen].data(); }
++		uint32_t* canvas(int screen) { dmg[screen] = { 0, 0, widths[screen], H }; last[screen].clear(); full[screen] = true; dropBase(screen); return scr[screen].data(); }
+ 
+ 		// (touches nothing of the backend's but the new texture: callable from the picture workers)
+ 		rnds::TexPtr upload(const rnds::Bitmap& b, bool smooth) override;
+@@ -135,6 +136,7 @@ namespace banana
+ 		void doDraw(SoftTex* t, float x, float y, float w, float h, const rnds::Color& tint, const Clip& cl);
+ 		void doFill(float x, float y, float w, float h, const rnds::Color& c, const Clip& cl);
+ 		int W, H, cur = 0;
++		int widths[2];
+ 		std::vector<uint32_t> scr[2];
+ 		Damage dmg[2];
+ 		std::vector<Clip> clips;
+diff --git a/ui/src/splash.cpp b/ui/src/splash.cpp
+index 220d935a..4cf9df4f 100644
+--- a/ui/src/splash.cpp
++++ b/ui/src/splash.cpp
+@@ -76,22 +76,45 @@ namespace banana
+ 
+ 	bool Splash::load(const std::string& dir, const std::string& banana, const std::string& variant, int w, int h)
+ 	{
+-		W = w; H = h; s = h / 480.0f;
++		W = H = 0;
++		if (w <= 0 || h <= 0) return false;
++		s = h / 480.0f;
+ 		light = variant == "light";
+ 		K = std::max(1, (int)std::lround(3 * s));
+ 		KW = std::max(1, (int)std::lround(6 * s));
+ 		KL = std::max(1, (int)std::lround(2 * s));
+-		std::string size = w > 640 ? "1024" : "640", pal = light ? "light" : "dark";
++		bool integerScale = w % 640 == 0 && h % 480 == 0 && w / 640 == h / 480;
++		std::string size = w > 640 && !integerScale ? "1024" : "640", pal = light ? "light" : "dark";
+ 		int bw, bh;
+-		if (!loadRgba(dir + "/" + pal + "-" + size + "-top.png", bgTop, bw, bh) || bw != W || bh != H) return false;
+-		if (!loadRgba(dir + "/" + pal + "-" + size + "-bot.png", bgBot, bw, bh) || bw != W || bh != H) return false;
++		auto resize = [](std::vector<uint32_t>& pixels, int sw, int sh, int tw, int th)
++		{
++			if (sw == tw && sh == th) return;
++			std::vector<uint32_t> scaled((size_t)tw * th);
++			for (int y = 0; y < th; y++)
++				for (int x = 0; x < tw; x++)
++					scaled[(size_t)y * tw + x] = pixels[(size_t)((int64_t)y * sh / th) * sw + (int64_t)x * sw / tw];
++			pixels.swap(scaled);
++		};
++		if (!loadRgba(dir + "/" + pal + "-" + size + "-top.png", bgTop, bw, bh)) return false;
++		resize(bgTop, bw, bh, w, h);
++		if (!loadRgba(dir + "/" + pal + "-" + size + "-bot.png", bgBot, bw, bh)) return false;
++		resize(bgBot, bw, bh, w, h);
++		float scale = (float)h / bh;
+ 		if (!loadRgba(dir + "/" + pal + "-" + size + "-lip.png", lip.px, lip.w, lip.h)) return false;
+ 		if (!loadRgba(dir + "/cart-" + size + ".png", cart.px, cart.w, cart.h)) return false;
++		for (Rgba* image : { &lip, &cart })
++		{
++			int iw = std::max(1, (int)std::lround(image->w * scale)), ih = std::max(1, (int)std::lround(image->h * scale));
++			resize(image->px, image->w, image->h, iw, ih);
++			image->w = iw; image->h = ih;
++		}
+ 		if (!loadRgba(banana, bunch.px, bunch.w, bunch.h)) return false;
+ 		if (!loadMask(dir + "/word.png", word.w, word.h, word.a, word.letters)) return false;
+ 		if (!loadMask(dir + "/loading.png", loading.w, loading.h, loading.a, loading.letters)) return false;
+ 		ink = light ? 0xff2a2620u : 0xfff1ede2u;
+ 		muted = light ? 0xff7a7262u : 0xffa39d8eu;
++		W = w; H = h;
++		cued = ejected = false;
+ 		return true;
+ 	}
+ 
+@@ -207,6 +230,7 @@ namespace banana
+ 
+ 	void Splash::draw(uint32_t* top, uint32_t* bot, double t, bool ready)
+ 	{
++		if (top) {
+ 		// ---- top: the bunch, the word, loading ----
+ 		std::copy(bgTop.begin(), bgTop.end(), top);
+ 		int bx = (W - bunch.w * K) / 2;
+@@ -228,6 +252,8 @@ namespace banana
+ 		drawWord(top, shown, t - (WORD_AT + (shown - 1) * LETTER) < 40 ? KW : 0);
+ 		if (t >= LOAD_AT) drawLoading(top, t, 3);
+ 
++		}
++		if (bot) {
+ 		// ---- bottom: the cartridge goes in ----
+ 		std::copy(bgBot.begin(), bgBot.end(), bot);
+ 		float cy;
+@@ -255,16 +281,18 @@ namespace banana
+ 			if (!cued) { cued = true; if (onCue) onCue("insert"); }
+ 			drawSparks(bot, t - CLICK_AT);
+ 		}
++		}
+ 	}
+ 
+ 	void Splash::drawOutro(uint32_t* top, uint32_t* bot, double t)
+ 	{
+ 		if (t >= OUTRO_END)
+ 		{
+-			std::fill(top, top + (size_t)W * H, 0xff000000u);
+-			std::fill(bot, bot + (size_t)W * H, 0xff000000u);
++			if (top) std::fill(top, top + (size_t)W * H, 0xff000000u);
++			if (bot) std::fill(bot, bot + (size_t)W * H, 0xff000000u);
+ 			return;
+ 		}
++		if (top) {
+ 		// ---- top: the dots and LOADING go, BANANAOS types itself out from its end, the bunch shines, hops and falls ----
+ 		std::copy(bgTop.begin(), bgTop.end(), top);
+ 		const double loadT = INTRO_END + t;	// the dots carry on from where the intro left them
+@@ -286,6 +314,8 @@ namespace banana
+ 		double shine = t >= HOP_AT - BYE_SHINE && t < HOP_AT ? (t - HOP_AT + BYE_SHINE) / BYE_SHINE : -1;
+ 		drawBunch(top, bx, X(by), shine);
+ 
++		}
++		if (bot) {
+ 		// ---- bottom: the light goes out, the cartridge is pressed in, pops out and is lifted away ----
+ 		std::copy(bgBot.begin(), bgBot.end(), bot);
+ 		const double ej = LIGHT_OUT, slideAt = ej + EJ_PRESS, riseAt = slideAt + EJ_SLIDE;
+@@ -309,7 +339,8 @@ namespace banana
+ 		if (t >= slideAt && !ejected) { ejected = true; if (onCue) onCue("eject"); }
+ 		drawSparks(bot, t - slideAt);
+ 
+-		if (t >= OFF_AT) { crtOff(top, t - OFF_AT); crtOff(bot, t - OFF_AT); }
++		}
++		if (t >= OFF_AT) { if (top) crtOff(top, t - OFF_AT); if (bot) crtOff(bot, t - OFF_AT); }
+ 	}
+ 
+ 	// a panel switching off like a CRT, t ms in: the picture squeezed to a bright line through the middle, the line
+diff --git a/ui/src/splash.h b/ui/src/splash.h
+index 09f927b8..74f8f516 100644
+--- a/ui/src/splash.h
++++ b/ui/src/splash.h
+@@ -53,4 +53,23 @@ namespace banana
+ 		void blit(uint32_t* d, const Rgba& r, int x, int y, int clipY1) const;
+ 		void fill(uint32_t* d, int x, int y, int w, int h, uint32_t c) const;
+ 	};
++
++	// Two independently sized compositions, sharing a timeline and one sound cue.
++	class PanelSplash
++	{
++	public:
++		bool load(const std::string& dir, const std::string& banana, const std::string& variant, int w, int h, int topWidth = 0)
++		{
++			panel[1].onCue = [this](const std::string& n) { if (onCue) onCue(n); };
++			return panel[0].load(dir, banana, variant, topWidth > 0 ? topWidth : w, h) && panel[1].load(dir, banana, variant, w, h);
++		}
++		void draw(uint32_t* top, uint32_t* bot, double t, bool ready) { panel[0].draw(top, nullptr, t, ready); panel[1].draw(nullptr, bot, t, ready); }
++		void drawOutro(uint32_t* top, uint32_t* bot, double t) { panel[0].drawOutro(top, nullptr, t); panel[1].drawOutro(nullptr, bot, t); }
++		bool finished(double t, bool ready) const { return panel[1].finished(t, ready); }
++		bool played() const { return panel[1].played(); }
++		int nextFrame(double t, bool ready) const { return panel[1].nextFrame(t, ready); }
++		std::function<void(const std::string&)> onCue;
++	private:
++		Splash panel[2];
++	};
+ }
+diff --git a/ui/tests/run.sh b/ui/tests/run.sh
+index ddf0e03f..3be617a3 100755
+--- a/ui/tests/run.sh
++++ b/ui/tests/run.sh
+@@ -22,6 +22,9 @@ FX=$OUT/fixture
+ rm -rf "$OUT"; mkdir -p "$OUT"
+ "$HERE/tests/fixture.sh" "$FX" >/dev/null
+ fail=0
++make -s -C "$HERE" tests/plane-selection-test >/dev/null && "$HERE/tests/plane-selection-test" || { echo "FAIL primary plane allocation"; fail=1; }
++make -s -C "$HERE" tests/scanout-test >/dev/null && "$HERE/tests/scanout-test" > "$OUT/scanout-test.log" 2>&1 || { echo "FAIL scanout rotation and scaling"; fail=1; }
++make -s -C "$HERE" tests/splash-test >/dev/null && "$HERE/tests/splash-test" "$HERE/assets" > "$OUT/splash-test.log" 2>&1 || { echo "FAIL splash resolutions"; fail=1; }
+ # the systems list: the card's systems.conf merged over the image's per system (systems-merge), and the history of old
+ # defaults it uses up to date with git (tools/systems-history.sh)
+ sh "$HERE/tests/systems-merge.sh" || fail=1
+diff --git a/ui/tests/soft-base-test.cpp b/ui/tests/soft-base-test.cpp
+index 55dc9fc7..ea1965e0 100644
+--- a/ui/tests/soft-base-test.cpp
++++ b/ui/tests/soft-base-test.cpp
+@@ -30,6 +30,22 @@ int main()
+ 	be.invalidate();
+ 	frame(be, blue, white, 100);
+ 	CHECK((be.pixels(0)[60 * 160 + 80] & 0xffffff) == 0x0000ff);
++	// Unequal canvases must retain their own stride, damage bounds and caches.
++	SoftBackend wide(160, 120, 213);
++	for (int frame = 0; frame < 220; frame++) {
++		for (int sc = 0; sc < 2; sc++) {
++			wide.beginScreen(sc);
++			wide.fill(0, 0, wide.width(sc), 120, sc ? blue : green);
++			wide.fill(0, 0, wide.width(sc), 120, sc ? blue : green);
++			wide.fill(wide.width(sc) - 4, 110, 4, 10, white);
++			wide.endScreen();
++		}
++	}
++	CHECK((wide.pixels(0)[60 * 213 + 212] & 0xffffff) == 0x00ff00);
++	CHECK((wide.pixels(1)[60 * 160 + 159] & 0xffffff) == 0x0000ff);
++	CHECK((wide.pixels(0)[119 * 213 + 212] & 0xffffff) == 0xffffff);
++	wide.invalidate();
++	CHECK(wide.takeDamage(0).x1 == 213 && wide.takeDamage(1).x1 == 160);
+ 	CHECK((be.pixels(0)[119 * 160 + 159] & 0xffffff) == 0x0000ff);
+ 	// and the frames after it (drawn by what changed) stay the new screen's
+ 	for (int i = 0; i < 5; i++) frame(be, blue, white, 100 + (float)i);

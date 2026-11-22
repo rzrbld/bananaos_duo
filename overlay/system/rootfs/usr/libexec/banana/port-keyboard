@@ -1,0 +1,11 @@
+#!/bin/sh
+# Keep upstream keyboard mapping for ports that use it. Native RetroArch
+# owns controller input and its Select+Start exit shortcut directly.
+mapper=$1
+shift
+for argument do
+    case "$argument" in
+        retroarch|retroarch.real|*/retroarch|*/retroarch.real) exit 0 ;;
+    esac
+done
+exec "$mapper" "$@"

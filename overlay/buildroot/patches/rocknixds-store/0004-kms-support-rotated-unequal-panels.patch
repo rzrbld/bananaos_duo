@@ -1,0 +1,75 @@
+From: BananaOS Duo Lite port
+Subject: [PATCH] KMS: support a rotated top panel and distinct primary planes
+
+--- a/dodakvarter/src/plat_kms.c
++++ b/dodakvarter/src/plat_kms.c
+@@ -33,7 +33,7 @@
+     drmModeModeInfo mode;
+     uint32_t p_fb, p_crtc, p_sx, p_sy, p_sw, p_sh, p_cx, p_cy, p_cw, p_ch, c_crtc, c_mode, c_active;
+     Buf b[2]; int front;
+-    int w, h, scale, ox, oy, lw, lh;
++    int w, h, scale, ox, oy, lw, lh, rotation;
+     uint64_t last_hash; int have_frame;
+ } Panel;
+ 
+@@ -233,7 +233,7 @@
+     for (int i = 0; i < 2; i++)
+         for (uint32_t k = 0; k < pres->count_planes && !P[i].plane; k++) {
+             drmModePlane *pl = drmModeGetPlane(fd, pres->planes[k]);
+-            if (pl && (pl->possible_crtcs & (1u << P[i].crtc_idx)) && propval(pl->plane_id, DRM_MODE_OBJECT_PLANE, "type") == DRM_PLANE_TYPE_PRIMARY)
++            if (pl && (!i || pl->plane_id != P[0].plane) && (pl->possible_crtcs & (1u << P[i].crtc_idx)) && propval(pl->plane_id, DRM_MODE_OBJECT_PLANE, "type") == DRM_PLANE_TYPE_PRIMARY)
+                 P[i].plane = pl->plane_id;
+             drmModeFreePlane(pl);
+         }
+@@ -251,10 +251,14 @@
+         p->c_crtc = prop(p->conn, DRM_MODE_OBJECT_CONNECTOR, "CRTC_ID");
+         p->c_mode = prop(p->crtc, DRM_MODE_OBJECT_CRTC, "MODE_ID"); p->c_active = prop(p->crtc, DRM_MODE_OBJECT_CRTC, "ACTIVE");
+         p->w = p->mode.hdisplay; p->h = p->mode.vdisplay;
+-        /* whole-pixel scale: as big as fits 320x240 */
+-        p->scale = MAX(1, MIN(p->w / 320, p->h / 240));
+-        p->lw = p->w / p->scale; p->lh = p->h / p->scale;
+-        p->ox = (p->w - p->lw * p->scale) / 2; p->oy = (p->h - p->lh * p->scale) / 2;
++        /* Scale in the panel's visible orientation; the scanout stays native. */
++        const char *rotation = i == 0 ? getenv("DK_TOP_ROTATION") : NULL;
++        p->rotation = rotation ? atoi(rotation) : 0;
++        if (p->rotation != 90 && p->rotation != 270) p->rotation = 0;
++        int vw = p->rotation ? p->h : p->w, vh = p->rotation ? p->w : p->h;
++        p->scale = MAX(1, MIN(vw / 320, vh / 240));
++        p->lw = vw / p->scale; p->lh = vh / p->scale;
++        p->ox = (vw - p->lw * p->scale) / 2; p->oy = (vh - p->lh * p->scale) / 2;
+         for (int k = 0; k < 2; k++) if (mkbuf(&p->b[k], (uint32_t)p->w, (uint32_t)p->h)) {
+             plat_log("kms: dumb buffer alloc failed"); drmDropMaster(fd); close(fd); fd = -1; return -1;
+         }
+@@ -304,6 +308,19 @@
+  * (the dumb buffer is write-combined: only ever write it, in long runs) */
+ static void upscale(Panel *p, Buf *b, const Surf *s) {
+     int k = p->scale, w = MIN(s->w, p->lw), h = MIN(s->h, p->lh);
++    if (p->rotation) {
++        /* Contiguous WC writes, with the same clockwise convention as Banana UI. */
++        for (int y = 0; y < p->h; y++) {
++            int rx = (p->rotation == 270 ? p->h - 1 - y : y) - p->ox;
++            for (int x = 0; x < p->w; x++) {
++                int ry = (p->rotation == 270 ? x : p->w - 1 - x) - p->oy;
++                rowbuf[x] = rx >= 0 && ry >= 0 && rx < w*k && ry < h*k
++                    ? s->px[(size_t)(ry/k)*s->pitch + rx/k] : 0;
++            }
++            memcpy((uint8_t *)b->map + (size_t)y*b->pitch, rowbuf, (size_t)p->w*4);
++        }
++        return;
++    }
+     for (int y = 0; y < h; y++) {
+         const uint32_t *src = s->px + (size_t)y * s->pitch;
+         uint32_t *r = rowbuf;
+--- a/dodakvarter/src/input_evdev.c
++++ b/dodakvarter/src/input_evdev.c
+@@ -213,6 +213,10 @@
+                         const char *inv = getenv("DK_TOUCH_INVERT");
+                         if (inv && strchr(inv, 'x')) px = pw_[s] - 1 - px;
+                         if (inv && strchr(inv, 'y')) py = ph_[s] - 1 - py;
++                        const char *rotation = s == 0 ? getenv("DK_TOP_ROTATION") : NULL;
++                        int rot = rotation ? atoi(rotation) : 0, old_x = px;
++                        if (rot == 270) { px = ph_[s] - 1 - py; py = old_x; }
++                        else if (rot == 90) { px = py; py = pw_[s] - 1 - old_x; }
+                         touch_state.touch[s] = d->down;
+                         touch_state.tx[s] = (px - ox_[s]) / sc_[s];
+                         touch_state.ty[s] = (py - oy_[s]) / sc_[s];

@@ -1,0 +1,42 @@
+--- a/bananads/src/frontend_kms.cpp
++++ b/bananads/src/frontend_kms.cpp
+@@ -709,7 +709,7 @@
+                 source = pixels.data(); pitch = b.w * 4;
+             }
+             if (shader_draw_mem_transform(panel, source, b.w, b.h, pitch, target.handle,
+-                    target.w, target.h, target.pitch, target.fb, 1, turn,
++                    target.w, target.h, target.pitch, target.fb, panel == 1, turn,
+                     (target.w - vw) / 2, (target.h - vh) / 2, vw, vh)) {
+                 Log(LogLevel::Error, "[kms] GPU fit failed\n");
+                 g_quit = true;
+@@ -864,6 +864,21 @@
+                 drmModeFreePlaneResources(pres);
+                 return false;
+             }
++
++        // Native GPU fitting uploads these sources; they are never scanned out.
++        // Write-combined DRM mappings are very slow when GL reads them back.
++        // Keep CPU rendering/upload sources cached, retaining GEM only for the
++        // plane-test metadata. Fitted destination buffers remain DRM-backed.
++        if (gpu_fit) {
++            for (auto& panel : buf) for (auto& b : panel) {
++                void* cached = mmap(nullptr, b.size, PROT_READ | PROT_WRITE,
++                                    MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
++                if (cached == MAP_FAILED) return false;
++                munmap(b.map, b.size);
++                b.map = (uint8_t*)cached;
++            }
++            Log(LogLevel::Info, "[kms] cached GPU upload sources\n");
++        }
+ 
+         // the first frame (black) on both panels in the mode they have, every other plane on their CRTCs off
+         drmModeAtomicReq* r = drmModeAtomicAlloc();
+@@ -2138,7 +2153,7 @@
+     // kms.commit_thread (Display::committer): blocking commits on a real-time thread of their own. auto (the default):
+     // at render.scale 3 and 4, where every core is busy (2x as before: nonblocking commits from this thread)
+     const std::string ct = cfg.str("kms.commit_thread", "auto");
+-    if (ct == "on" || ct == "1" || (ct == "auto" && emu.scale() >= 3)) {
++    if (!dp.gpu_fit && (ct == "on" || ct == "1" || (ct == "auto" && emu.scale() >= 3))) {
+         dp.cthread_start();
+         Log(LogLevel::Info, "[kms] commits on a thread of their own (blocking, SCHED_FIFO 6)\n");
+     }

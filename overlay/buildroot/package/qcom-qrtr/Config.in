@@ -1,0 +1,3 @@
+config BR2_PACKAGE_QCOM_QRTR
+	bool "Qualcomm qrtr"
+	depends on BR2_BANANA_DUOLITE

@@ -1,0 +1,35 @@
+From: BananaOS Duo Lite bring-up
+Subject: [PATCH] soc: qcom: pd-mapper: add SM6125 firmware domains
+
+The Duo Lite DT identifies qcom,sm6125, which lacks a PD mapper match.
+Alpha2 logs show PDM rejecting both remote processors; no wlan0 appears.
+Use domains/instance IDs in the shipped SM6125 .jsn files, including the
+modem wlan_pd (wlan/fw and kernel/elf_loader) and ADSP audio_pd.
+
+--- a/drivers/soc/qcom/qcom_pd_mapper.c
++++ b/drivers/soc/qcom/qcom_pd_mapper.c
+@@ -544,6 +544,16 @@
+ 	&adsp_sensor_pd,
+ 	&cdsp_root_pd,
+ 	&mpss_root_pd_gps,
++	&mpss_wlan_pd,
++	NULL,
++};
++
++/* Domains shipped by the SM6125 Duo Lite firmware (.jsn descriptors). */
++static const struct qcom_pdm_domain_data *sm6125_domains[] = {
++	&adsp_audio_pd,
++	&adsp_root_pd,
++	&adsp_sensor_pd,
++	&mpss_root_pd,
+ 	&mpss_wlan_pd,
+ 	NULL,
+ };
+@@ -652,6 +662,7 @@
+ 	{ .compatible = "qcom,sdm845", .data = sdm845_domains, },
+ 	{ .compatible = "qcom,sm4250", .data = sm6115_domains, },
+ 	{ .compatible = "qcom,sm6115", .data = sm6115_domains, },
++	{ .compatible = "qcom,sm6125", .data = sm6125_domains, },
+ 	{ .compatible = "qcom,sm6350", .data = sm6350_domains, },
+ 	{ .compatible = "qcom,sm7150", .data = sm7150_domains, },
+ 	{ .compatible = "qcom,sm7225", .data = sm6350_domains, },

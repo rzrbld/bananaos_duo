@@ -1,0 +1,13 @@
+{
+  "image": "ROCKNIX-SM6115.aarch64-20261101.img.gz",
+  "image_sha256": "2486e664f43a5c75358900ff1b5290e6e113e0fd66cc41733f6f02e33409825d",
+  "partition": "system",
+  "path": "/openabl",
+  "files": {
+    "abl_signed-SM6115.elf": "feb3a0c7428397c884eb43aefcbcafbcfd4fd07a567d18963a4dc2f37c0ad961",
+    "backup_abl.sh": "3203f63a61b10e2790f8d7f062ff30068047806c08faf0e54a310cfacb793f02",
+    "flash_abl.sh": "19f718abe683d27905279eba9469c6724aeb7d93f81760cfa9815f3a79f259ca",
+    "restore_backup_abl.sh": "a3be22312042147cb602a02c3d42741ca67ed9e29423221c75359f183e100cfe"
+  },
+  "modified": false
+}

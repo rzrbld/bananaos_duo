@@ -1,0 +1,3 @@
+config BR2_PACKAGE_QCOM_ADRENO_FIRMWARE
+	bool "Adreno 610 GPU microcode"
+	depends on BR2_BANANA_DUOLITE

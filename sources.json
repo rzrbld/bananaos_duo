@@ -1,0 +1,25 @@
+{
+  "BananaLinux": {
+    "url": "https://github.com/JorreFog/BananaLinux.git",
+    "commit": "54123092f4cb8195d01b82ad12c880d35de059d0"
+  },
+  "Buildroot": {
+    "url": "https://github.com/buildroot/buildroot.git",
+    "commit": "679b9ead7620bbf193620d1ebf56f53c1764d37a",
+    "version": "2026.02.3"
+  },
+  "BananaFront": {
+    "repository": "https://github.com/JorreFog/BananaFront",
+    "commit": "a23fad993a8d29ea0d8394e176b8b91e22c39567",
+    "sha256": {
+      "menu.c": "48cb6f1e689758cea2ed86372f918cf5496d4f98a8f0aa2d383c83219073ed8c",
+      "menu.h": "8a90694c00f4558668c3cda7c71fa2f97cace5da34859ce2e6038ab7b25ff823",
+      "lang.c": "6b42d92f9d1596c3cf4f0927f8c380381e30a30750d19f7faa1af18eeae980e9",
+      "lang.h": "8fc001dcea22e7fd94baae300730b260f580e15886244f9fdc5316c5ec9905f4",
+      "ra.h": "a5467b091ce333c7fa68a4a56b253c79a149467b5f201f00b599dacc03b98618",
+      "third_party/stb/stb_truetype.h": "ecd30b05e0dd4fea3a13c26810dd9e1992dc379049482c393d5a19e6b5090aab",
+      "third_party/stb/stb_image.h": "594c2fe35d49488b4382dbfaec8f98366defca819d916ac95becf3e75f4200b3"
+    },
+    "license_sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903"
+  }
+}

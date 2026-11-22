@@ -1,0 +1,30 @@
+#!/bin/sh
+# Diagnostic image: save evidence on the computer-readable FAT partition even
+# if data setup, graphics or Wi-Fi never starts. No credentials are collected.
+P=/run/banana/early-log.pid
+M=/run/banana/boot-debug
+echo $$ > "$P"
+mkdir -p "$M"
+i=0
+while [ "$i" -lt 30 ]; do
+    major=$(awk '$5 == "/" { dev=$3 } END { print dev }' /proc/self/mountinfo)
+    part=$(readlink "/sys/dev/block/$major")
+    name=${part##*/}; parent=${part%/*}; parent=${parent##*/}
+    case "$name" in
+        "${parent}p2"|"${parent}p3")
+            if grep -qE '^PARTNAME=banana-root-[ab]$' "/sys/class/block/$name/uevent" &&
+               mount -t vfat -o rw,noatime "/dev/${parent}p1" "$M"; then break; fi ;;
+    esac
+    i=$((i + 1)); sleep 1
+done
+[ "$i" -lt 30 ] || { echo 'Early logger could not mount boot partition' >&2; exit 1; }
+L=$M/banana-debug
+mkdir -p "$L"
+for f in dmesg.txt startup.txt; do [ ! -f "$L/$f" ] || mv -f "$L/$f" "$L/${f%.txt}.previous.txt"; done
+while :; do
+    dmesg > "$L/dmesg.txt.new" && mv -f "$L/dmesg.txt.new" "$L/dmesg.txt"
+    { date; cat /proc/uptime /proc/cmdline; cat /run/banana/startup.log; } > "$L/startup.txt.new" 2>&1
+    mv -f "$L/startup.txt.new" "$L/startup.txt"
+    sync
+    sleep 5
+done

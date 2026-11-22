@@ -1,0 +1,18 @@
+From: BananaOS Duo Lite bring-up
+Subject: [PATCH] drm/msm/dpu: initialize CRTC state before releasing mixers
+
+ROCKNIX resource-cleanup patch writes num_mixers before assigning cstate.
+Initialize the pointer at declaration. The alpha1 device log faults at
+dpu_crtc_atomic_check+0x320, mapped to this exact write via faddr2line.
+
+--- a/drivers/gpu/drm/msm/disp/dpu1/dpu_crtc.c
++++ b/drivers/gpu/drm/msm/disp/dpu1/dpu_crtc.c
+@@ -1438,7 +1438,7 @@
+ 	int i, num_lm, num_ctl, num_dspp;
+ 	struct dpu_kms *dpu_kms = _dpu_crtc_get_kms(crtc);
+ 	struct dpu_global_state *global_state;
+-	struct dpu_crtc_state *cstate;
++	struct dpu_crtc_state *cstate = to_dpu_crtc_state(crtc_state);
+ 	struct msm_display_topology topology;
+ 	int ret;
+ 

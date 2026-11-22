@@ -1,0 +1,83 @@
+name: Firmware
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: firmware-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - name: Check release version
+        env:
+          TAG: ${{ github.ref_name }}
+          REF_TYPE: ${{ github.ref_type }}
+        run: |
+          if [ "$REF_TYPE" = tag ]; then test "$TAG" = "v$(cat VERSION)"; fi
+          test "$(cat VERSION)" = "$(cat overlay/buildroot/board/duolite/RELEASE)"
+      - name: Free runner space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
+      - name: Restore downloads and compiler cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            build/work/native-dl/*/*.tar.*
+            build/work/native-dl/*/*.zip
+            build/work/native-ccache
+          key: duolite-${{ runner.os }}-${{ hashFiles('sources.json', 'overlay/buildroot/**', 'patches/**') }}
+          restore-keys: duolite-${{ runner.os }}-
+      - name: Build, verify and package firmware with corresponding sources
+        env:
+          JOBS: '4'
+        run: make release
+      - name: Upload complete release artifacts
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: duolite-firmware
+          compression-level: 0
+          retention-days: 14
+          path: dist/*
+          if-no-files-found: error
+  publish:
+    if: github.ref_type == 'tag'
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - name: Download verified artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: gh run download "$RUN_ID" --name duolite-firmware --dir dist
+      - name: Publish all assets together
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+          COMMIT: ${{ github.sha }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo 'Release already exists; preserving its verified assets.'
+            exit 0
+          fi
+          cd dist
+          sha256sum -c SHA256SUMS-duolite.txt
+          printf 'BananaOS Duo Lite %s. Native Buildroot firmware for the Retroid Pocket Duo Lite.\n\nDownload the .img.gz for a fresh SD card, or install the .update.tar through Settings > System > Updates. Updates write and verify the inactive root slot, then change the OpenABL boot entry. The running slot remains available for recovery.\n\nSee the repository README and docs/STATUS.md for current limitations. Corresponding sources and license manifests are included in the source archive.\n' "$TAG" > "$RUNNER_TEMP/notes.txt"
+          set -- "$TAG" ./* --title "BananaOS Duo Lite $TAG" --target "$COMMIT" --notes-file "$RUNNER_TEMP/notes.txt" --draft
+          case "$TAG" in *-alpha.*) set -- "$@" --prerelease ;; esac
+          gh release create "$@"
+          gh release edit "$TAG" --draft=false

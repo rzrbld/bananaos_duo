@@ -1,0 +1,37 @@
+name: Checks
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  checks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - name: Host build dependencies
+        run: sudo apt-get update && sudo apt-get install -y build-essential libdrm-dev libfreetype-dev libasound2-dev zlib1g-dev
+      - name: Reconstruct source and test A/B updates and hardware policy
+        run: make test
+      - name: Compile launcher and test unequal-panel presentation
+        run: |
+          make -C build/source/ui host
+          make -C build/source/ui tests/plane-selection-test tests/scanout-test tests/splash-test
+          build/source/ui/tests/plane-selection-test
+          build/source/ui/tests/scanout-test
+          build/source/ui/tests/splash-test
+      - name: Check shell and Python syntax
+        run: |
+          sh -n scripts/build.sh
+          sh -n build/source/system/rootfs/usr/libexec/banana/update
+          sh -n build/source/system/rootfs/usr/libexec/banana/update-duolite-boot
+          python3 -m compileall -q scripts tests

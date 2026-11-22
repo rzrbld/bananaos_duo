@@ -1,0 +1,117 @@
+From: BananaOS Duo Lite bring-up
+Subject: [PATCH] hwmon: pwm-fan: add user minimum independent of thermal demand
+
+Local firmware extension. pwm1_floor is 0..255; cooling still raises the
+actual PWM above it. The thermal state is retained when the floor changes.
+
+--- a/drivers/hwmon/pwm-fan.c
++++ b/drivers/hwmon/pwm-fan.c
+@@ -53,6 +53,7 @@
+ 	struct timer_list rpm_timer;
+ 
+ 	unsigned int pwm_value;
++	unsigned int pwm_floor; /* user minimum; thermal demand may always raise it */
+ 	unsigned int pwm_fan_state;
+ 	unsigned int pwm_fan_max_state;
+ 	unsigned int *pwm_fan_cooling_levels;
+@@ -203,11 +204,13 @@
+ static int  __set_pwm(struct pwm_fan_ctx *ctx, unsigned long pwm)
+ {
+ 	struct pwm_state *state = &ctx->pwm_state;
+-	unsigned long final_pwm = pwm;
++	unsigned long final_pwm;
+ 	unsigned long period;
+ 	bool update = false;
+ 	int ret = 0;
+ 
++	pwm = max(pwm, (unsigned long)ctx->pwm_floor);
++	final_pwm = pwm;
+ 	if (pwm > 0) {
+ 		if (ctx->enable_mode == pwm_off_reg_off)
+ 			/* pwm-fan hard disabled */
+@@ -384,6 +387,45 @@
+ 	.write = pwm_fan_write,
+ };
+ 
++/* A floor is separate from pwm_fan_state: changing it never erases the
++ * thermal governor's requested cooling state. Suspend still powers the fan off. */
++static ssize_t pwm1_floor_show(struct device *dev,
++			      struct device_attribute *attr, char *buf)
++{
++	struct pwm_fan_ctx *ctx = dev_get_drvdata(dev);
++
++	return sysfs_emit(buf, "%u\n", READ_ONCE(ctx->pwm_floor));
++}
++
++static ssize_t pwm1_floor_store(struct device *dev,
++			       struct device_attribute *attr,
++			       const char *buf, size_t count)
++{
++	struct pwm_fan_ctx *ctx = dev_get_drvdata(dev);
++	unsigned int floor, old;
++	int ret;
++
++	ret = kstrtouint(buf, 10, &floor);
++	if (ret)
++		return ret;
++	if (floor > MAX_PWM || !ctx->pwm_fan_cooling_levels)
++		return -EINVAL;
++	mutex_lock(&ctx->lock);
++	old = ctx->pwm_floor;
++	ctx->pwm_floor = floor;
++	ret = __set_pwm(ctx, ctx->pwm_fan_cooling_levels[ctx->pwm_fan_state]);
++	if (ret)
++		ctx->pwm_floor = old;
++	mutex_unlock(&ctx->lock);
++	return ret ? ret : count;
++}
++static DEVICE_ATTR_RW(pwm1_floor);
++static struct attribute *pwm_fan_attrs[] = {
++	&dev_attr_pwm1_floor.attr,
++	NULL,
++};
++ATTRIBUTE_GROUPS(pwm_fan);
++
+ /* thermal cooling device callbacks */
+ static int pwm_fan_get_max_state(struct thermal_cooling_device *cdev,
+ 				 unsigned long *state)
+@@ -420,17 +462,11 @@
+ 	if (!ctx || (state > ctx->pwm_fan_max_state))
+ 		return -EINVAL;
+ 
+-	if (state == ctx->pwm_fan_state)
+-		return 0;
+-
+-	ret = set_pwm(ctx, ctx->pwm_fan_cooling_levels[state]);
+-	if (ret) {
+-		dev_err(&cdev->device, "Cannot set pwm!\n");
+-		return ret;
+-	}
+-
+-	ctx->pwm_fan_state = state;
+-
++	mutex_lock(&ctx->lock);
++	ret = __set_pwm(ctx, ctx->pwm_fan_cooling_levels[state]);
++	if (!ret)
++		ctx->pwm_fan_state = state;
++	mutex_unlock(&ctx->lock);
+ 	return ret;
+ }
+ 
+@@ -681,14 +717,14 @@
+ 	ctx->info.ops = &pwm_fan_hwmon_ops;
+ 	ctx->info.info = channels;
+ 
++	ctx->pwm_fan_state = ctx->pwm_fan_max_state;
+ 	hwmon = devm_hwmon_device_register_with_info(dev, "pwmfan",
+-						     ctx, &ctx->info, NULL);
++						     ctx, &ctx->info, pwm_fan_groups);
+ 	if (IS_ERR(hwmon)) {
+ 		dev_err(dev, "Failed to register hwmon device\n");
+ 		return PTR_ERR(hwmon);
+ 	}
+ 
+-	ctx->pwm_fan_state = ctx->pwm_fan_max_state;
+ 	if (IS_ENABLED(CONFIG_THERMAL)) {
+ 		cdev = devm_thermal_of_child_cooling_device_register(dev, dev->of_node,
+ 								     "pwm-fan", ctx,

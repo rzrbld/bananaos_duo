@@ -1,0 +1,10 @@
+#!/bin/sh
+# init starts these only after rcS has mounted /run and started syslog.
+case $1 in
+    qrtr-ns) /usr/bin/qrtr-ns 2>&1 | logger -t qrtr-ns ;;
+    tqftpserv) mkdir -p /run/banana/tqftpserv; /usr/bin/tqftpserv 2>&1 | logger -t tqftpserv ;;
+    rmtfs) /usr/bin/rmtfs -r -P -s 2>&1 | logger -t rmtfs ;;
+    *) exit 2 ;;
+esac
+# Avoid a tight respawn loop if a helper cannot start.
+sleep 2

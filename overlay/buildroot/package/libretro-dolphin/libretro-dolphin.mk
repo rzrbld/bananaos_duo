@@ -1,0 +1,29 @@
+LIBRETRO_DOLPHIN_VERSION = 2ce4b654546b4dde495df5cb5ca7f13fbf6df5c9
+LIBRETRO_DOLPHIN_SITE = https://github.com/libretro/dolphin.git
+LIBRETRO_DOLPHIN_SITE_METHOD = git
+LIBRETRO_DOLPHIN_GIT_SUBMODULES = YES
+LIBRETRO_DOLPHIN_LICENSE = GPL-2.0-or-later
+LIBRETRO_DOLPHIN_LICENSE_FILES = COPYING LICENSES/GPL-2.0-or-later.txt
+LIBRETRO_DOLPHIN_DEPENDENCIES = zlib libpng lzo libusb libevdev libdrm libegl libgles
+LIBRETRO_DOLPHIN_CONF_OPTS = -DCMAKE_NO_SYSTEM_FROM_IMPORTED=ON -DBUILD_SHARED_LIBS=OFF \
+	-DLIBRETRO=ON \
+	-DENABLE_X11=OFF \
+	-DENABLE_EGL=ON \
+	-DENABLE_VULKAN=OFF \
+	-DENABLE_QT=OFF \
+	-DENABLE_NOGUI=OFF \
+	-DENABLE_HEADLESS=ON \
+	-DENABLE_LTO=OFF \
+	-DENABLE_GENERIC=OFF \
+	-DENABLE_TESTS=OFF \
+	-DUSE_UPNP=OFF \
+	-DUSE_DISCORD_PRESENCE=OFF \
+	-DCMAKE_POLICY_VERSION_MINIMUM=3.5
+
+define LIBRETRO_DOLPHIN_INSTALL_TARGET_CMDS
+	$(INSTALL) -D -m 0644 $(@D)/dolphin_libretro.so $(TARGET_DIR)/usr/lib/libretro/dolphin_libretro.so
+	mkdir -p $(TARGET_DIR)/usr/share/banana/duolite/system/dolphin-emu
+	cp -a $(@D)/Data/Sys $(TARGET_DIR)/usr/share/banana/duolite/system/dolphin-emu/
+endef
+
+$(eval $(cmake-package))

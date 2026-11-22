@@ -1,0 +1,19 @@
+From: BananaOS Duo Lite bring-up
+Subject: [PATCH] hwmon: pwm-fan: boost only when the fan is stopped
+
+The quiet running duty is below the starting duty. Thermal updates and
+floor writes must not repeat the starting pulse on an already powered fan.
+Power-off and suspend clear enabled, preserving the next real start pulse.
+
+--- a/drivers/hwmon/pwm-fan.c
++++ b/drivers/hwmon/pwm-fan.c
+@@ -221,7 +221,8 @@
+ 			return 0;
+ 
+ 		period = state->period;
+-		update = state->duty_cycle < ctx->pwm_duty_cycle_from_stopped;
++		update = !ctx->enabled &&
++			 state->duty_cycle < ctx->pwm_duty_cycle_from_stopped;
+ 		if (update)
+ 			state->duty_cycle = ctx->pwm_duty_cycle_from_stopped;
+ 		else

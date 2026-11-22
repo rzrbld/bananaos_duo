@@ -1,0 +1,5 @@
+config BR2_PACKAGE_QCOM_TQFTPSERV
+	bool "Qualcomm tqftpserv"
+	depends on BR2_BANANA_DUOLITE
+	select BR2_PACKAGE_QCOM_QRTR
+	select BR2_PACKAGE_ZSTD

@@ -1,0 +1,38 @@
+#!/bin/sh
+# OS-owned native display and stdin-command setup. User configuration is read,
+# never rewritten; saves/core options remain on the data partition.
+set -eu
+CORE=$1
+ROM=$2
+mkdir -p /run/banana /data/saves /data/states /data/screenshots
+FIFO=/run/banana/retroarch.cmd
+CFG=/run/banana/retroarch-native.cfg
+LEASED=0
+if [ -n "${BANANA_DRM_LEASE_FD:-}" ]; then
+    LEASED=1
+    FIFO=${BANANA_RA_CMD:?missing game-panel command pipe}
+    export LD_PRELOAD=/usr/lib/banana/banana-leaseshim.so
+else
+    rm -f "$FIFO"
+    mkfifo -m 600 "$FIFO"
+fi
+exec 3<>"$FIFO"
+if [ -n "${BANANA_RA_OUT:-}" ] && [ -p "$BANANA_RA_OUT" ]; then exec 4>"$BANANA_RA_OUT"; else exec 4>&1; fi
+printf 'stdin_cmd_enable = "true"\n' > "$CFG"
+PROFILE="/usr/share/banana/duolite/cores/${CORE##*/}.cfg"
+[ ! -f "$PROFILE" ] || cat "$PROFILE" >> "$CFG"
+if [ -f /run/banana/resume-once ] && [ "$(cat /run/banana/resume-once)" = "${BANANA_ROM:-$ROM}" ]; then
+    printf 'savestate_auto_load = "true"\nstate_slot = "-1"\n' >> "$CFG"
+    rm -f /run/banana/resume-once
+fi
+export BANANA_RA_APPEND_CONFIG=$CFG
+retroarch --verbose --log-file /run/banana/retroarch.log -L "$CORE" "$ROM" < "$FIFO" >&4 &
+P=$!
+trap 'kill -TERM "$P" 2>/dev/null || :' TERM INT HUP
+set +e
+wait "$P"; result=$?
+while kill -0 "$P" 2>/dev/null; do wait "$P"; result=$?; done
+exec 3>&- 4>&-
+[ "$LEASED" = 1 ] || rm -f "$FIFO"
+rm -f "$CFG"
+exit "$result"

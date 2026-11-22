@@ -1,0 +1,12 @@
+--- a/src/citra_libretro/CMakeLists.txt
++++ b/src/citra_libretro/CMakeLists.txt
+@@ -35,6 +35,9 @@
+ 
+ set_target_properties(citra_libretro PROPERTIES PREFIX "")
+ target_compile_definitions(citra_libretro PRIVATE HAVE_LIBRETRO)
++if(USING_GLES)
++  target_compile_definitions(citra_libretro PRIVATE USING_GLES)
++endif()
+ 
+ if(ANDROID)
+   target_compile_definitions(citra_common PRIVATE HAVE_LIBRETRO_VFS)

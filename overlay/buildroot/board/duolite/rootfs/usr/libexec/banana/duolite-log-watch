@@ -1,0 +1,44 @@
+#!/bin/sh
+# Offline logs survive a missing radio or failed association: read the exFAT
+# data partition on a computer. Never copy wifi.conf or NetworkManager secrets.
+L=/data/banana/logs
+mkdir -p "$L"
+if [ "$1" != --once ]; then
+    echo $$ > /run/banana/log-watch.pid
+for f in network.txt system.txt; do
+    [ ! -f "$L/$f" ] || mv -f "$L/$f" "$L/${f%.txt}.1.txt"
+done
+fi
+snapshot() {
+    /usr/libexec/banana/boot-log
+    { date; cat /proc/uptime; ip -o address show; ip route;
+      printf '\nResolver\n'; cat /run/resolv.conf 2>/dev/null;
+      printf '\nDHCP\n'; tail -n 80 /run/banana/dhcp.log 2>/dev/null;
+      printf '\nRadio\n'; cat /sys/class/net/wlan0/operstate 2>/dev/null;
+      wpa_cli -p /run/wpa_supplicant -i wlan0 status 2>/dev/null;
+      printf '\nRemote processors\n';
+      for r in /sys/class/remoteproc/remoteproc*; do [ -d "$r" ] && cat "$r/name" "$r/state"; done;
+      printf '\nLoaded modules\n'; cat /proc/modules;
+      printf '\nDeferred drivers\n'; cat /sys/kernel/debug/devices_deferred 2>/dev/null;
+      printf '\nWi-Fi driver\n'; readlink /sys/bus/platform/devices/c800000.wifi/driver 2>/dev/null;
+      printf '\nBluetooth\n';
+      for b in /sys/class/bluetooth/hci*; do [ -d "$b" ] && cat "$b/address" "$b/name" 2>/dev/null; done;
+      tail -n 80 /run/banana/bluetooth.log 2>/dev/null;
+      printf '\nDisplay state\n'; cat /sys/kernel/debug/dri/0/state 2>/dev/null;
+      printf '\nServices\n'; pidof qrtr-ns tqftpserv rmtfs wpa_supplicant wpa_cli udhcpc dropbear;
+    } > /run/banana/network-snapshot.txt 2>&1
+    cp /run/banana/network-snapshot.txt "$L/network.txt.new" && mv -f "$L/network.txt.new" "$L/network.txt"
+    # syslog is bounded in RAM, copied atomically to the data partition.
+    if ! cmp -s /run/banana/messages "$L/system.txt"; then
+        cp /run/banana/messages "$L/system.txt.new" && mv -f "$L/system.txt.new" "$L/system.txt"
+    fi
+    sync
+}
+[ "$1" != --once ] || { snapshot; exit; }
+# Frequent during bring-up, then once a minute; final snapshot also runs in rcK.
+i=0
+while :; do
+    snapshot
+    i=$((i + 1))
+    if [ "$i" -lt 24 ]; then sleep 5; else sleep 60; fi
+done

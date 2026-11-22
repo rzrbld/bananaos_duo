@@ -1,0 +1,14 @@
+--- a/gfx/drivers/gl2.c
++++ b/gfx/drivers/gl2.c
+@@ -3326,7 +3326,10 @@
+    gl->coords.vertices    = 4;
+ 
+    gl->shader->set_coords(gl->shader_data, &gl->coords);
+-   gl->shader->set_mvp(gl->shader_data, &gl->mvp_no_rot);
++   /* The native panel is mounted portrait. Match the game rotation for
++    * the software menu texture too; other platforms keep upstream behavior. */
++   gl->shader->set_mvp(gl->shader_data, getenv("BANANA_NATIVE_MENU_ROTATION")
++         ? &gl->mvp : &gl->mvp_no_rot);
+ 
+    glEnable(GL_BLEND);
+ 

@@ -1,0 +1,38 @@
+--- a/ui/third_party/banana_menu/menu.c
++++ b/ui/third_party/banana_menu/menu.c
+@@ -586,7 +586,7 @@
+         uint32_t *px; int pitch;
+         if (i == 0 && H.canvas(H.ctx, 0, &px, &pitch, &pw[0], &ph[0]) < 0) { single = 1; pw[0] = ph[0] = 1; CV[0].w = CV[0].h = 1; CV[0].s = 1; CV[0].px = calloc(1, 4); continue; }   /* BananaFront */
+         if (H.canvas(H.ctx, i, &px, &pitch, &pw[i], &ph[i]) < 0) { mlog("[menu] no panel buffers\n"); return 0; }
+-        CV[i].w = pw[i]; CV[i].h = ph[i]; CV[i].s = pw[i] / 640.0f;
++        CV[i].w = pw[i]; CV[i].h = ph[i]; CV[i].s = ph[i] / 480.0f; /* unequal/widescreen native panels */
+         if (!(CV[i].px = malloc((size_t)pw[i] * ph[i] * 4))) return 0;
+     }
+     if (!(bgtop = malloc((size_t)pw[0] * ph[0] * 4))) return 0;
+@@ -1323,8 +1323,15 @@
+     else if (b == BM_L && scr == SC_CHEAT) nav(-1, 0); else if (b == BM_R && scr == SC_CHEAT) nav(1, 0);
+ }
+ 
+-void bmenu_init(const bmenu_host *h) { H = *h; }
+-void bmenu_session_start(void) { session_t0 = now_ms(); }
++void bmenu_init(const bmenu_host *h) {
++    H = *h;
++    gbase[0] = gtitle[0] = ggenre[0] = 0; /* persistent OS host: refresh the game */
++    if (!access("/sys/class/backlight/backlight/brightness", R_OK) &&
++        !access("/sys/class/backlight/serial0-0/brightness", R_OK)) {
++        BLN[0] = "backlight"; BLN[1] = "serial0-0";
++    }
++}
++void bmenu_session_start(void) { session_t0 = now_ms(); undo_ok = 0; last_slot = -1; }
+ 
+ int bmenu_run(int start) {
+     if (!setup()) return 0;
+@@ -1341,7 +1348,7 @@
+     play(SND_SELECT);
+     if (start) { sel_main = start == 1 ? 1 : start == 2 ? 2 : start == 3 ? 3 : 5; activate(); }
+     long long clock_t0 = now_ms();
+-    { bmenu_ev e; while (H.poll(H.ctx, &e)) {} }   /* the press that opened it */
++    { bmenu_ev e; for (int n = 0; n < 128 && H.poll(H.ctx, &e); n++) {} }   /* the press that opened it */
+     while (open_) {
+         bmenu_ev e;
+         while (open_ && H.poll(H.ctx, &e)) handle(&e);

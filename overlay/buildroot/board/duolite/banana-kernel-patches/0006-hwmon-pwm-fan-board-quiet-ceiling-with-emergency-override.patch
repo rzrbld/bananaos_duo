@@ -1,0 +1,100 @@
+From: BananaOS Duo Lite bring-up
+Subject: [PATCH] hwmon: pwm-fan: board quiet ceiling with emergency override
+
+--- a/drivers/hwmon/pwm-fan.c
++++ b/drivers/hwmon/pwm-fan.c
+@@ -54,6 +54,7 @@
+ 
+ 	unsigned int pwm_value;
+ 	unsigned int pwm_floor; /* user minimum; thermal demand may always raise it */
++	unsigned int quiet_max_pwm, emergency_state;
+ 	unsigned int pwm_fan_state;
+ 	unsigned int pwm_fan_max_state;
+ 	unsigned int *pwm_fan_cooling_levels;
+@@ -209,7 +210,13 @@
+ 	bool update = false;
+ 	int ret = 0;
+ 
++	/* A raw application write must not reduce emergency thermal demand. */
++	if (ctx->quiet_max_pwm && ctx->pwm_fan_cooling_levels &&
++	    ctx->pwm_fan_state >= ctx->emergency_state)
++		pwm = max(pwm, (unsigned long)ctx->pwm_fan_cooling_levels[ctx->pwm_fan_state]);
+ 	pwm = max(pwm, (unsigned long)ctx->pwm_floor);
++	if (ctx->quiet_max_pwm && ctx->pwm_fan_state < ctx->emergency_state)
++		pwm = min(pwm, (unsigned long)ctx->quiet_max_pwm);
+ 	final_pwm = pwm;
+ 	if (pwm > 0) {
+ 		if (ctx->enable_mode == pwm_off_reg_off)
+@@ -219,9 +226,12 @@
+ 		period = state->period;
+ 		update = !ctx->enabled &&
+ 			 state->duty_cycle < ctx->pwm_duty_cycle_from_stopped;
+-		if (update)
++		if (update) {
+ 			state->duty_cycle = ctx->pwm_duty_cycle_from_stopped;
+-		else
++			if (ctx->quiet_max_pwm && ctx->pwm_fan_state < ctx->emergency_state)
++				state->duty_cycle = min(state->duty_cycle,
++					DIV_ROUND_UP((u64)ctx->quiet_max_pwm * (period - 1), MAX_PWM));
++		} else
+ 			state->duty_cycle = DIV_ROUND_UP(pwm * (period - 1), MAX_PWM);
+ 		ret = pwm_apply_might_sleep(ctx->pwm, state);
+ 		if (ret)
+@@ -257,6 +267,11 @@
+ static void pwm_fan_update_state(struct pwm_fan_ctx *ctx, unsigned long pwm)
+ {
+ 	int i;
++
++	/* In quiet-policy mode this is the thermal request, not an estimate
++	 * from an application PWM write (which may have been capped). */
++	if (ctx->quiet_max_pwm)
++		return;
+ 
+ 	for (i = 0; i < ctx->pwm_fan_max_state; ++i)
+ 		if (pwm < ctx->pwm_fan_cooling_levels[i + 1])
+@@ -458,15 +473,18 @@
+ pwm_fan_set_cur_state(struct thermal_cooling_device *cdev, unsigned long state)
+ {
+ 	struct pwm_fan_ctx *ctx = cdev->devdata;
++	unsigned int old_state;
+ 	int ret;
+ 
+ 	if (!ctx || (state > ctx->pwm_fan_max_state))
+ 		return -EINVAL;
+ 
+ 	mutex_lock(&ctx->lock);
++	old_state = ctx->pwm_fan_state;
++	ctx->pwm_fan_state = state;
+ 	ret = __set_pwm(ctx, ctx->pwm_fan_cooling_levels[state]);
+-	if (!ret)
+-		ctx->pwm_fan_state = state;
++	if (ret)
++		ctx->pwm_fan_state = old_state;
+ 	mutex_unlock(&ctx->lock);
+ 	return ret;
+ }
+@@ -557,6 +575,14 @@
+ 
+ 	mutex_init(&ctx->lock);
+ 
++	/* Optional board policy, enforced for thermal, user-floor and raw PWM
++	 * requests alike. Emergency thermal states bypass the quiet ceiling. */
++	device_property_read_u32(dev, "banana,quiet-max-pwm", &ctx->quiet_max_pwm);
++	device_property_read_u32(dev, "banana,emergency-cooling-state", &ctx->emergency_state);
++	if (ctx->quiet_max_pwm > MAX_PWM ||
++	    (ctx->quiet_max_pwm && !ctx->emergency_state))
++		return -EINVAL;
++
+ 	ctx->dev = &pdev->dev;
+ 	ctx->pwm = devm_pwm_get(dev, NULL);
+ 	if (IS_ERR(ctx->pwm))
+@@ -597,6 +623,9 @@
+ 	ret = pwm_fan_get_cooling_data(dev, ctx);
+ 	if (ret)
+ 		return ret;
++	if (ctx->quiet_max_pwm && (!ctx->pwm_fan_cooling_levels ||
++	    ctx->emergency_state > ctx->pwm_fan_max_state))
++		return -EINVAL;
+ 
+ 	/* use maximum cooling level if provided */
+ 	if (ctx->pwm_fan_cooling_levels)

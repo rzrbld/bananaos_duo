@@ -1,0 +1,225 @@
+--- a/command.c
++++ b/command.c
+@@ -735,6 +735,129 @@
+ {
+    command_event(CMD_EVENT_AUDIO_REINIT, NULL);
+    return true;
++}
++
++/* The stdin callback only queues work. Core operations run after retro_run has
++ * returned, so reset/load cannot reenter a core's input callback. Replies use
++ * the stdin transport's stdout, independent of driver reinitialization. */
++#ifdef HAVE_KMS
++void gfx_ctx_drm_banana_menu(bool active);
++#endif
++static int banana_menu_pending;
++static int banana_menu_slot;
++enum { BM_CMD_INFO = 1, BM_CMD_PAUSE, BM_CMD_RESUME, BM_CMD_SAVE,
++       BM_CMD_LOAD, BM_CMD_RESET, BM_CMD_ADVANCED, BM_CMD_QUIT, BM_CMD_NOSAVE };
++
++bool command_banana_menu(command_t *cmd, const char *arg)
++{
++#if defined(HAVE_STDIN_CMD)
++   int op = 0, slot = 0;
++   if (cmd->replier != stdin_command_reply || banana_menu_pending)
++      return false;
++   if (!strcmp(arg, "INFO")) op = BM_CMD_INFO;
++   else if (!strcmp(arg, "PAUSE")) op = BM_CMD_PAUSE;
++   else if (!strcmp(arg, "RESUME")) op = BM_CMD_RESUME;
++   else if (!strcmp(arg, "RESET")) op = BM_CMD_RESET;
++   else if (!strcmp(arg, "ADVANCED")) op = BM_CMD_ADVANCED;
++   else if (!strcmp(arg, "QUIT")) op = BM_CMD_QUIT;
++   else if (!strcmp(arg, "QUIT_NOSAVE")) op = BM_CMD_NOSAVE;
++   else if (!strncmp(arg, "SAVE ", 5) || !strncmp(arg, "LOAD ", 5))
++   {
++      op = arg[0] == 'S' ? BM_CMD_SAVE : BM_CMD_LOAD;
++      slot = atoi(arg + 5);
++      if (slot < -1 || slot > 9) return false;
++   }
++   if (!op) return false;
++   banana_menu_slot = slot;
++   banana_menu_pending = op;
++   return true;
++#else
++   return false;
++#endif
++}
++
++void command_banana_menu_iterate(void)
++{
++   char path[PATH_MAX_LENGTH] = "";
++   const int op = banana_menu_pending, slot = banana_menu_slot;
++   const char *name = "UNKNOWN";
++   bool ok = true;
++   if (!op) return;
++   banana_menu_pending = 0;
++   if (op == BM_CMD_INFO)
++   {
++      runloop_get_savestate_path(path, sizeof(path), 0);
++      fprintf(stdout, "BANANA_MENU INFO %d\t%s\n",
++            config_get_ptr()->bools.savestate_auto_save ? 1 : 0, path);
++      fflush(stdout);
++      return;
++   }
++   switch (op)
++   {
++      case BM_CMD_PAUSE:
++         name = "PAUSE";
++#ifdef HAVE_KMS
++         gfx_ctx_drm_banana_menu(true);
++#endif
++#ifdef HAVE_MENU
++         if (menu_state_get_ptr()->flags & MENU_ST_FLAG_ALIVE)
++            command_event(CMD_EVENT_MENU_TOGGLE, NULL);
++#endif
++         command_event(CMD_EVENT_PAUSE, NULL);
++         ok = (runloop_state_get_ptr()->flags & RUNLOOP_FLAG_PAUSED) != 0;
++         break;
++      case BM_CMD_RESUME:
++         name = "RESUME";
++#ifdef HAVE_KMS
++         gfx_ctx_drm_banana_menu(false);
++#endif
++         command_event(CMD_EVENT_UNPAUSE, NULL);
++         break;
++      case BM_CMD_RESET:
++         name = "RESET";
++         command_event(CMD_EVENT_UNPAUSE, NULL);
++         command_event(CMD_EVENT_RESET, NULL);
++         break;
++      case BM_CMD_ADVANCED:
++         name = "ADVANCED";
++#ifdef HAVE_KMS
++         gfx_ctx_drm_banana_menu(false);
++#endif
++         command_event(CMD_EVENT_UNPAUSE, NULL);
++         command_event(CMD_EVENT_MENU_TOGGLE, NULL);
++         break;
++      case BM_CMD_SAVE:
++      case BM_CMD_LOAD:
++         name = op == BM_CMD_SAVE ? "SAVE" : "LOAD";
++         ok = core_info_current_supports_savestate();
++#ifdef HAVE_CHEEVOS
++         if (rcheevos_hardcore_active()) ok = false;
++#endif
++         if (!ok) break;
++         runloop_get_savestate_path(path, sizeof(path), slot);
++         if (op == BM_CMD_SAVE)
++         {
++            ok = content_save_state(path, true);
++            content_wait_for_save_state_task();
++            ok = ok && path_is_valid(path);
++         }
++         else
++         {
++            ok = content_load_state(path, false, false);
++            content_wait_for_load_state_task();
++            if (ok) command_post_state_loaded();
++         }
++         break;
++      case BM_CMD_QUIT:
++      case BM_CMD_NOSAVE:
++         name = "QUIT";
++         if (op == BM_CMD_NOSAVE)
++            config_get_ptr()->bools.savestate_auto_save = false;
++         command_event(CMD_EVENT_QUIT, NULL);
++         break;
++   }
++   fprintf(stdout, "BANANA_MENU %s %s\n", name, ok ? "OK" : "ERR");
++   fflush(stdout);
+ }
+ 
+ bool command_show_osd_msg(command_t *cmd, const char* arg)
+--- a/command.h
++++ b/command.h
+@@ -439,6 +439,8 @@
+ bool command_write_memory(command_t *cmd, const char *arg);
+ bool command_load_core(command_t *cmd, const char* arg);
+ bool command_audio_reinit(command_t *cmd, const char* arg);
++bool command_banana_menu(command_t *cmd, const char* arg);
++void command_banana_menu_iterate(void);
+ 
+ static const struct cmd_action_map action_map[] = {
+ #if defined(HAVE_CG) || defined(HAVE_GLSL) || defined(HAVE_SLANG) || defined(HAVE_HLSL)
+@@ -466,6 +468,7 @@
+ 
+    { "LOAD_CORE", command_load_core, "<core path>"},
+    { "AUDIO_REINIT", command_audio_reinit, "No argument"},
++   { "BANANA_MENU", command_banana_menu, "Original OS menu request"},
+ };
+ 
+ static const struct cmd_map map[] = {
+--- a/retroarch.c
++++ b/retroarch.c
+@@ -6061,6 +6061,7 @@
+       ui_companion_qt.application->process_events();
+ #endif
+       ret = runloop_iterate();
++      command_banana_menu_iterate();
+ 
+       task_queue_check();
+ 
+@@ -6160,6 +6161,7 @@
+    }
+ 
+    ret = runloop_iterate();
++   command_banana_menu_iterate();
+ 
+ #ifdef EMSCRIPTEN_AUDIO_ASYNC_BLOCK
+ #ifdef HAVE_AUDIOWORKLET
+--- a/gfx/drivers_context/drm_ctx.c
++++ b/gfx/drivers_context/drm_ctx.c
+@@ -79,6 +79,9 @@
+    bool core_hw_context_enable;
+    bool waiting_for_flip;
+ } gfx_ctx_drm_data_t;
++
++static gfx_ctx_drm_data_t *banana_menu_drm;
++static bool banana_menu_active;
+ 
+ struct drm_fb
+ {
+@@ -520,6 +523,16 @@
+    return false;
+ }
+ 
++/* The OS menu borrows the primary plane through the lessor. Finish our
++ * pending flip before acknowledging PAUSE, and leave that plane alone until
++ * the OS has finished its own final flip and sends RESUME/ADVANCED. */
++void gfx_ctx_drm_banana_menu(bool active)
++{
++   if (banana_menu_drm && active)
++      gfx_ctx_drm_wait_flip(banana_menu_drm, true);
++   banana_menu_active = active;
++}
++
+ static bool gfx_ctx_drm_queue_flip(gfx_ctx_drm_data_t *drm)
+ {
+    struct drm_fb *fb = NULL;
+@@ -550,6 +563,9 @@
+    gfx_ctx_drm_data_t        *drm = (gfx_ctx_drm_data_t*)data;
+    settings_t *settings           = config_get_ptr();
+    unsigned max_swapchain_images  = settings->uints.video_max_swapchain_images;
++
++   if (banana_menu_active)
++      return;
+ 
+    /* Recreate the surface */
+    if (switch_mode)
+@@ -785,6 +801,8 @@
+ 
+    g_drm_fd                       = fd;
+ 
++   banana_menu_drm = drm;
++   banana_menu_active = false;
+    video_driver_display_type_set(RARCH_DISPLAY_KMS);
+ 
+    return drm;
+@@ -938,6 +956,7 @@
+    if (!drm)
+       return;
+ 
++   if (banana_menu_drm == drm) { banana_menu_drm = NULL; banana_menu_active = false; }
+    gfx_ctx_drm_destroy_resources(drm);
+    free(drm);
+ }

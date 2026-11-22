@@ -1,0 +1,104 @@
+#!/bin/sh
+export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+. /etc/banana/hardware.env
+mount -t proc proc /proc
+mount -t sysfs sysfs /sys
+mount -t debugfs debugfs /sys/kernel/debug 2>/dev/null
+mount -t devtmpfs devtmpfs /dev 2>/dev/null
+mount -t tmpfs -o mode=0755,nosuid,nodev tmpfs /run
+mount -t tmpfs -o mode=1777,nosuid,nodev tmpfs /tmp
+mkdir -p /dev/pts /dev/shm /run/banana /run/banana/sd2 /run/banana/tqftpserv
+touch /run/resolv.conf
+exec >>/run/banana/startup.log 2>&1
+mark() { echo "$(cut -d' ' -f1 /proc/uptime) $*"; }
+mark 'rcS reached'
+/usr/libexec/banana/duolite-early-log &
+mount -t devpts devpts /dev/pts
+mount -t tmpfs -o mode=1777,nosuid,nodev tmpfs /dev/shm
+ln -sfn /proc/self/fd /dev/fd
+ln -sfn /proc/self/fd/0 /dev/stdin
+ln -sfn /proc/self/fd/1 /dev/stdout
+ln -sfn /proc/self/fd/2 /dev/stderr
+hostname banana
+syslogd -O /run/banana/messages -s 256 -b 1
+ip link set lo up
+mark 'starting udev'
+# All device firmware is on the mounted root. Missing optional ath10k cal/API
+# files must fail immediately so its next candidate can load, rather than
+# waiting 60s per file for a userspace firmware service we do not run.
+echo 1 > /proc/sys/kernel/firmware_config/ignore_sysfs_fallback
+udevd --daemon
+udevadm trigger --action=add
+udevadm settle --timeout=10
+mark 'udev settle returned'
+for loading in /sys/class/firmware/*/loading; do
+    [ -f "$loading" ] || continue
+    request=${loading%/loading}
+    firmware=/lib/firmware/${request##*/}
+    if [ -f "$firmware" ]; then
+        echo 1 > "$loading"; cat "$firmware" > "$request/data"; echo 0 > "$loading"
+    else
+        echo -1 > "$loading"
+    fi
+done
+for status in /sys/class/drm/card*-DP-1/status; do
+    [ ! -w "$status" ] || echo detect > "$status"
+done
+# The main menu is the only display owner during Duo Lite startup.
+major=$(awk '$5 == "/" { dev=$3 } END { print dev }' /proc/self/mountinfo)
+part=$(readlink "/sys/dev/block/$major")
+name=${part##*/}; parent=${part%/*}; parent=${parent##*/}
+case "$name" in
+    "${parent}p2"|"${parent}p3") DISK=/dev/$parent ;;
+    *) echo 'Cannot identify the BananaOS root disk' > /dev/console; exec sh ;;
+esac
+mark "root disk $DISK"
+echo "$DISK" > /run/banana/disk
+echo a > /run/banana/slot
+grep -q 'root=PARTLABEL=banana-root-b' /proc/cmdline && echo b > /run/banana/slot
+if [ ! -b "${DISK}p4" ]; then
+    /usr/libexec/banana/firstboot "$DISK"
+elif grep -q '^PARTNAME=banana-new$' "/sys/class/block/${DISK##*/}p4/uevent" 2>/dev/null; then
+    /usr/libexec/banana/firstboot --format "$DISK"
+fi
+data_mount() { mount -t exfat -o noatime,uid=0,gid=0,fmask=0000,dmask=0000,iocharset=utf8,errors=remount-ro "${DISK}p4" /data; }
+data_mount || { fsck.exfat -y "${DISK}p4"; data_mount; } || {
+    echo 'Cannot mount the BananaOS data partition' > /dev/console
+    exec sh
+}
+mark 'data mounted'
+/usr/libexec/banana/data-layout
+# Stable per-card machine ID, with a writable runtime copy for D-Bus.
+if ! grep -qxE '[0-9a-f]{32}' /data/banana/machine-id 2>/dev/null; then
+    tr -d '-' < /proc/sys/kernel/random/uuid > /data/banana/machine-id
+fi
+cp /data/banana/machine-id /run/banana/machine-id
+mkdir -p /data/banana/logs
+cp /run/banana/messages /data/banana/logs/early-boot.txt
+if [ -f /run/banana/boot-debug/loader/entries/banana.conf ]; then
+    # The early logger already mounted this filesystem. Reuse that mount.
+    mount --bind /run/banana/boot-debug /boot
+else
+    mount -t vfat -o ro,noatime "${DISK}p1" /boot
+fi
+/usr/libexec/banana/duolite-import-network
+/usr/libexec/banana/duolite-log-watch >/run/banana/log-watch.log 2>&1 &
+# Bring-up default: root / rocknix, public keys optional. An explicit user
+# switch to Off is respected even before the first menu initialization.
+if ! grep -q '^ *ssh *= *off' /data/banana/settings.conf 2>/dev/null; then
+    /usr/libexec/banana/ssh up 2>&1 | logger -t ssh
+fi
+mark 'starting bananad'
+bananad &
+# Do not block rcS: init's supervised Qualcomm helpers start when it returns.
+( for module in ath10k_snoc; do modprobe "$module"; done
+  if ! grep -q '^ *wifi *= *off' /data/banana/settings.conf 2>/dev/null; then
+      /usr/libexec/banana/wifi up
+  fi ) 2>&1 | logger -t wifi &
+# Restore the user's Bluetooth On setting; scanning/pairing remains in Settings.
+if grep -q '^ *bluetooth *= *on' /data/banana/settings.conf 2>/dev/null; then
+    /usr/libexec/banana/bluetooth up 2>&1 | logger -t bluetooth &
+fi
+/usr/libexec/banana/systems-merge
+
+mark 'rcS finished; handing over to menu and Qualcomm services'

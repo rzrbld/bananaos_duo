@@ -1,0 +1,13 @@
+#!/bin/sh
+# Native KMS/GLES scans out GPU buffers; the OS profile rotates the game.
+export BANANA_NATIVE_MENU_ROTATION=1
+# Use the same OS controller mapping as the native input stack, so bindings
+# below use SDL's canonical IDs rather than the raw joystick button order.
+export SDL_GAMECONTROLLERCONFIG_FILE=/usr/share/banana/portmaster/gamecontrollerdb-duolite.txt
+export SDL_GAMECONTROLLERCONFIG="$(cat "$SDL_GAMECONTROLLERCONFIG_FILE")"
+export HOME=/data/home XDG_CONFIG_HOME=/data/home/.config XDG_RUNTIME_DIR=/run
+# Ports inherit the launcher's surfaceless SDL environment. Native KMS must
+# select its own EGL/GBM display; SDL is retained only for controller input.
+unset EGL_PLATFORM SDL_VIDEODRIVER SDL_BANANA_PANELS SDL_BANANA_READBACK
+mkdir -p "$XDG_CONFIG_HOME/retroarch" /data/saves /data/states /data/screenshots
+exec /usr/libexec/banana/retroarch.real --appendconfig "/usr/share/banana/duolite/retroarch.cfg${BANANA_RA_APPEND_CONFIG:+|$BANANA_RA_APPEND_CONFIG}" "$@"

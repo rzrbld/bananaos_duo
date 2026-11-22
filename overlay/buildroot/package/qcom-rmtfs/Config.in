@@ -1,0 +1,5 @@
+config BR2_PACKAGE_QCOM_RMTFS
+	bool "Qualcomm remote filesystem service"
+	depends on BR2_BANANA_DUOLITE
+	depends on BR2_PACKAGE_HAS_UDEV
+	select BR2_PACKAGE_QCOM_QRTR

@@ -1,0 +1,72 @@
+#!/bin/sh
+# Sourced by update on Duo Lite. Only SD-card roots and OpenABL BLS entries.
+DTB_NAME=sm6125-retroid-pocket-duo-lite.dtb
+ENTRY=/boot/loader/entries/banana.conf
+
+default_slot() {
+    sed -n 's/^options .*root=PARTLABEL=banana-root-\([ab]\)\( .*\|$\)/\1/p' "$ENTRY" | head -n 1
+}
+
+duolite_guard() {
+    [ "$DISK" = /dev/mmcblk0 ] || fail "Duo Lite updates require the SD card, not internal storage"
+    case $SLOT in a) running=mmcblk0p2; inactive=mmcblk0p3 ;; b) running=mmcblk0p3; inactive=mmcblk0p2 ;; *) fail "invalid running slot" ;; esac
+    root_dev=$(awk '$5 == "/" {dev=$3} END {print dev}' /proc/self/mountinfo)
+    [ -n "$root_dev" ] && [ -b "/dev/$running" ] || fail "running SD root is unavailable"
+    [ "$(readlink -f "/sys/dev/block/$root_dev")" = "$(readlink -f "/sys/class/block/$running")" ] || fail "running root does not match SD slot"
+    grep -q "root=PARTLABEL=banana-root-$SLOT\( \|$\)" /proc/cmdline || fail "running slot disagrees with the kernel"
+    for s in a b; do
+        p=$(partition "$s")
+        grep -qx "PARTNAME=banana-root-$s" "/sys/class/block/${p##*/}/uevent" || fail "SD partition labels do not match"
+    done
+    ! grep -q "^/dev/$inactive " /proc/mounts || fail "inactive root is mounted"
+    inactive_dev=$(cat "/sys/class/block/$inactive/dev")
+    [ -n "$inactive_dev" ] && ! awk -v d="$inactive_dev" '$3 == d {found=1} END {exit !found}' /proc/self/mountinfo || fail "inactive root has mounted filesystems"
+    [ ! -s "$RUN/game.pid" ] || fail "return to the launcher before updating"
+    [ -n "$(default_slot)" ] || fail "OpenABL boot entry is missing or invalid"
+    holder=$(cat "$RUN/awake.pid" 2>/dev/null)
+    if [ -n "$holder" ] && kill -0 "$holder" 2>/dev/null; then fail "another job is still running"; fi
+    awake
+    trap unawake 0
+}
+
+# Also handles fresh images, whose running kernel starts at /Image. Before any
+# inactive-root write, give the working slot its own kernel and recovery entry.
+duolite_prepare() {
+    boot_rw
+    mkdir -p "/boot/$SLOT"
+    for name in Image "$DTB_NAME"; do
+        dest=/boot/$SLOT/$name
+        if [ ! -s "$dest" ]; then
+            [ "$(default_slot)" = "$SLOT" ] || fail "running slot has no saved kernel"
+            case $name in Image) key=linux ;; *) key=devicetree ;; esac
+            from=$(sed -n "s/^$key //p" "$ENTRY")
+            case $from in /*) ;; *) fail "invalid running $key path" ;; esac
+            cp "/boot$from" "$dest.new" && cmp "/boot$from" "$dest.new" && sync && mv -f "$dest.new" "$dest" || fail "can't preserve running $key"
+        fi
+    done
+    duolite_entry "$SLOT" > /boot/loader/entries/banana-recovery.conf.new || fail "can't prepare recovery"
+    sync
+    mv -f /boot/loader/entries/banana-recovery.conf.new /boot/loader/entries/banana-recovery.conf || fail "can't retain recovery"
+    boot_ro
+}
+
+duolite_entry() {
+    case $1 in a|b) ;; *) return 1 ;; esac
+    [ -s "/boot/$1/Image" ] && [ -s "/boot/$1/$DTB_NAME" ] || return 1
+    options=$(sed -n 's/^options //p' "$ENTRY")
+    [ "$(printf '%s\n' "$options" | grep -c 'root=PARTLABEL=banana-root-[ab]')" = 1 ] || return 1
+    options=$(printf '%s\n' "$options" | sed "s/root=PARTLABEL=banana-root-[ab]/root=PARTLABEL=banana-root-$1/")
+    v=$(cat "/boot/$1/VERSION" 2>/dev/null)
+    printf 'title BananaOS Duo Lite %s (slot %s)\nlinux /%s/Image\ndevicetree /%s/%s\noptions %s\n' "$v" "$1" "$1" "$1" "$DTB_NAME" "$options"
+}
+
+set_default() {
+    boot_rw
+    duolite_entry "$1" > "$ENTRY.new" || { rm -f "$ENTRY.new"; fail "slot $1 is incomplete"; }
+    sync
+    grep -qx "linux /$1/Image" "$ENTRY.new" &&
+        grep -qx "devicetree /$1/$DTB_NAME" "$ENTRY.new" &&
+        grep -q "^options .*root=PARTLABEL=banana-root-$1\( \|$\)" "$ENTRY.new" || fail "invalid OpenABL entry"
+    mv -f "$ENTRY.new" "$ENTRY" || fail "can't switch the OpenABL boot entry"
+    boot_ro
+}

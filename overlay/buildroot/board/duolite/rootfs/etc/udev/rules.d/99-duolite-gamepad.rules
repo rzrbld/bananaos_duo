@@ -1,0 +1,2 @@
+# The serial gamepad's absolute axes must not classify it as a mouse.
+SUBSYSTEM=="input", ATTRS{name}=="Retroid Pocket Duo Lite Gamepad", ENV{ID_INPUT_JOYSTICK}="1", ENV{ID_INPUT_MOUSE}="", ENV{ID_INPUT_TOUCHPAD}=""

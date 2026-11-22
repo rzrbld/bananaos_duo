@@ -1,0 +1,9 @@
+QCOM_TQFTPSERV_VERSION = 1.2
+QCOM_TQFTPSERV_SITE = $(call github,linux-msm,tqftpserv,v$(QCOM_TQFTPSERV_VERSION))
+QCOM_TQFTPSERV_LICENSE = BSD-3-Clause
+QCOM_TQFTPSERV_LICENSE_FILES = LICENSE
+QCOM_TQFTPSERV_INSTALL_STAGING = YES
+QCOM_TQFTPSERV_DEPENDENCIES = qcom-qrtr zstd
+QCOM_TQFTPSERV_CONF_OPTS = -Dsystemd-unit-prefix=/usr/lib/systemd/system
+
+$(eval $(meson-package))

@@ -1,0 +1,6 @@
+[submodule "BananaLinux"]
+	path = upstream/BananaLinux
+	url = https://github.com/JorreFog/BananaLinux.git
+[submodule "buildroot"]
+	path = upstream/buildroot
+	url = https://github.com/buildroot/buildroot.git

@@ -1,0 +1,281 @@
+diff --git a/bananads/src/frontend_kms.cpp b/bananads/src/frontend_kms.cpp
+index 3f10f22..145d58e 100644
+--- a/bananads/src/frontend_kms.cpp
++++ b/bananads/src/frontend_kms.cpp
+@@ -60,6 +60,7 @@
+ #include <deque>
+ #include <functional>
+ #include <mutex>
++#include <map>
+ #include <string>
+ #include <thread>
+ #include <vector>
+@@ -68,6 +69,9 @@
+ #include "cpugov.h"
+ #include "ffspeed.h"
+ #include "frontend.h"
++#ifdef BANANADS_2D
++#include "GPU_Banana.h"
++#endif
+ #ifdef BANANADS_GENGIS
+ #include "gengis_renderer.h"
+ #endif
+@@ -136,6 +140,9 @@ using Lock = std::lock_guard<PiMutex>;
+ // SuperDrastic's shader pass (shader.c): GL on the presenter thread, dumb buffers in and out
+ extern "C" {
+ int shader_init(int fd, const char* name);
++extern int shader_copy_mode;
++int shader_draw_mem_transform(int panel, const void* px, int sw, int sh, int sp, uint32_t dh, int dw, int dhh, int dp, uint64_t gen, int finish, int rotation, int vx, int vy, int vw, int vh);
++const char* shader_renderer(void);
+ int shader_draw(uint32_t sh, int sw, int shh, int sp, uint64_t sgen, uint32_t dh, int dw, int dhh, int dp, uint64_t dgen, int finish);
+ int shader_viewport(int* v, int pw, int ph);
+ int shader_grid4_lut(unsigned char lut[2][256]);
+@@ -183,6 +190,11 @@ struct Display {
+     static const int NB = 7;  // writing, up to 3 queued, drawn ahead through the shader, committed, on screen
+     int fd = -1;
+     Panel p[2];               // [0] = top, [1] = bottom
++    std::string bottom;
++    bool rotate_top = false;
++    std::map<uint32_t, Buf> rotated;
++    bool gpu_fit = false;
++    std::map<std::pair<uint32_t, uint32_t>, Buf> fitted;
+     // F + SELECT: the DS's top screen on the bottom panel and its bottom screen on the top one (the frames' buffers go to
+     // the other planes at the commit; touch follows the DS's bottom screen, see the input loop)
+     std::atomic<bool> swapped{false};
+@@ -676,16 +688,69 @@ struct Display {
+     }
+ 
+     void add_plane(drmModeAtomicReq* r, Panel& q, const Buf& b) {
+-        drmModeAtomicAddProperty(r, q.plane, q.p_fb, b.fb);
++        const Buf* scan = &b;
++        if (gpu_fit) {
++            int panel = q.conn == p[0].conn ? 0 : 1;
++            int turn = panel == 0 && rotate_top ? 270 : 0;
++            Buf& target = fitted[{b.fb, q.conn}];
++            if (!target.map && !mkbuf(target, q.mode.hdisplay, q.mode.vdisplay)) {
++                g_quit = true;
++                return;
++            }
++            int sw = turn ? b.h : b.w, sh = turn ? b.w : b.h;
++            int vw = target.w, vh = (int)((int64_t)vw * sh / sw);
++            if (vh > (int)target.h) { vh = target.h; vw = (int)((int64_t)vh * sw / sh); }
++            std::vector<uint32_t> pixels;
++            const void* source = b.map;
++            int pitch = b.pitch;
++            if (b.r565) {
++                pixels.resize((size_t)b.w * b.h);
++                for (uint32_t y = 0; y < b.h; y++) row_to32(b, y, pixels.data() + (size_t)y * b.w, b.w);
++                source = pixels.data(); pitch = b.w * 4;
++            }
++            if (shader_draw_mem_transform(panel, source, b.w, b.h, pitch, target.handle,
++                    target.w, target.h, target.pitch, target.fb, 1, turn,
++                    (target.w - vw) / 2, (target.h - vh) / 2, vw, vh)) {
++                Log(LogLevel::Error, "[kms] GPU fit failed\n");
++                g_quit = true;
++                return;
++            }
++            scan = &target;
++        } else if (rotate_top && q.conn == p[0].conn) {
++            Buf& turned = rotated[b.fb];
++            if (turned.w != b.h || turned.h != b.w) {
++                freebuf(turned);
++                if (!mkbuf(turned, b.h, b.w)) {
++                    Log(LogLevel::Error, "[kms] can't allocate rotated scanout\n");
++                    return;
++                }
++            }
++            std::vector<uint32_t> row(b.w);
++            for (uint32_t y = 0; y < b.h; y++) {
++                row_to32(b, y, row.data(), b.w);
++                for (uint32_t x = 0; x < b.w; x++)
++                    ((uint32_t*)(turned.map + (size_t)(b.w - 1 - x) * turned.pitch))[y] = row[x];
++            }
++            scan = &turned;
++        }
++        int cw = q.mode.hdisplay, ch = q.mode.vdisplay;
++        if (!bottom.empty()) {
++            ch = (int)((int64_t)cw * scan->h / scan->w);
++            if (ch > q.mode.vdisplay) {
++                ch = q.mode.vdisplay;
++                cw = (int)((int64_t)ch * scan->w / scan->h);
++            }
++        }
++        drmModeAtomicAddProperty(r, q.plane, q.p_fb, scan->fb);
+         drmModeAtomicAddProperty(r, q.plane, q.p_crtc, q.crtc);
+         drmModeAtomicAddProperty(r, q.plane, q.p_sx, 0);
+         drmModeAtomicAddProperty(r, q.plane, q.p_sy, 0);
+-        drmModeAtomicAddProperty(r, q.plane, q.p_sw, (uint64_t)b.w << 16);
+-        drmModeAtomicAddProperty(r, q.plane, q.p_sh, (uint64_t)b.h << 16);
+-        drmModeAtomicAddProperty(r, q.plane, q.p_cx, 0);
+-        drmModeAtomicAddProperty(r, q.plane, q.p_cy, 0);
+-        drmModeAtomicAddProperty(r, q.plane, q.p_cw, q.mode.hdisplay);
+-        drmModeAtomicAddProperty(r, q.plane, q.p_ch, q.mode.vdisplay);
++        drmModeAtomicAddProperty(r, q.plane, q.p_sw, (uint64_t)scan->w << 16);
++        drmModeAtomicAddProperty(r, q.plane, q.p_sh, (uint64_t)scan->h << 16);
++        drmModeAtomicAddProperty(r, q.plane, q.p_cx, (q.mode.hdisplay - cw) / 2);
++        drmModeAtomicAddProperty(r, q.plane, q.p_cy, (q.mode.vdisplay - ch) / 2);
++        drmModeAtomicAddProperty(r, q.plane, q.p_cw, cw);
++        drmModeAtomicAddProperty(r, q.plane, q.p_ch, ch);
+     }
+ 
+     // each panel lit in its mode on its CRTC (with ALLOW_MODESET: the menu may have switched them off on letting go)
+@@ -699,6 +764,12 @@ struct Display {
+ 
+     // the device, the panels, the planes, the first (black) frame
+     bool open(const std::string& top, int scale) {
++        if (const char* name = getenv("BANANADS_BOTTOM")) bottom = name;
++        if (const char* rotation = getenv("BANANADS_TOP_ROTATION")) {
++            if (strcmp(rotation, "0") && strcmp(rotation, "270")) return false;
++            rotate_top = !strcmp(rotation, "270");
++        }
++        if (bottom == top || (rotate_top && bottom.empty())) return false;
+         std::string type = top.substr(0, top.find('-'));
+         for (int n = 0; n < 8 && fd < 0; n++) {
+             char path[32];
+@@ -755,12 +826,19 @@ struct Display {
+             q.p_ch = prop(q.plane, o, "CRTC_H");
+             drmModeCreatePropertyBlob(fd, &q.mode, sizeof q.mode, &q.mode_blob);
+         }
+-        W = p[0].mode.hdisplay;
+-        H = p[0].mode.vdisplay;
++        int canvas = bottom.empty() ? 0 : 1;
++        W = p[canvas].mode.hdisplay;
++        H = p[canvas].mode.vdisplay;
+         const drmModeModeInfo& md = p[0].mode;
+         if (md.htotal && md.vtotal) period_us = 1e9 / ((double)md.clock * 1000.0 / (md.htotal * md.vtotal)) / 1000.0;
+         fw = 256 * scale;
+         fh = 192 * scale;
++        if (!bottom.empty() && getenv("BANANADS_GPU_FIT") && !strcmp(getenv("BANANADS_GPU_FIT"), "1")) {
++            shader_copy_mode = 1;
++            gpu_fit = shader_init(fd, "duolite-nearest") != 0;
++            if (gpu_fit) Log(LogLevel::Info, "[kms] native panel GPU fit: %s\n", shader_renderer());
++            else Log(LogLevel::Warn, "[kms] GPU fit unavailable; using CPU\n");
++        }
+ 
+         // can the plane scale a DS-sized buffer to the panel? (VOP2 can; QEMU's virtio GPU can't)
+         hw = mkbuf(buf[0][0], fw, fh) && mkbuf(buf[1][0], fw, fh);
+@@ -819,7 +897,9 @@ struct Display {
+             drmModeConnector* c = drmModeGetConnector(fd, res->connectors[i]);
+             if (!c) continue;
+             const char* tn = drmModeGetConnectorTypeName(c->connector_type);
+-            if (tn && type == tn && c->connection == DRM_MODE_CONNECTED && c->count_modes > 0) {
++            std::string name = tn ? std::string(tn) + "-" + std::to_string(c->connector_type_id) : "";
++            bool selected = bottom.empty() ? tn && type == tn : name == top || name == bottom;
++            if (selected && c->connection == DRM_MODE_CONNECTED && c->count_modes > 0) {
+                 Found f;
+                 // the kernel command line's mode (video=<connector>:<mode>) first, then the panel's preferred one
+                 f.q.mode = c->modes[0];
+@@ -857,13 +937,13 @@ struct Display {
+             return found[0].q.mode.hdisplay == found[1].q.mode.hdisplay &&
+                    found[0].q.mode.vdisplay == found[1].q.mode.vdisplay;
+         };
+-        if (!same())
++        if (bottom.empty() && !same())
+             for (auto& m : found[1].modes)
+                 if (m.hdisplay == found[0].q.mode.hdisplay && m.vdisplay == found[0].q.mode.vdisplay) {
+                     found[1].q.mode = m;
+                     break;
+                 }
+-        if (!same()) return false;
++        if (bottom.empty() && !same()) return false;
+         p[0] = found[0].q;
+         p[1] = found[1].q;
+         return true;
+@@ -873,6 +953,10 @@ struct Display {
+         cthread_stop();
+         gpu_floor(false);
+         if (fd < 0) return;
++        for (auto& item : fitted) freebuf(item.second);
++        fitted.clear();
++        for (auto& item : rotated) freebuf(item.second);
++        rotated.clear();
+         freebufs();
+         for (auto& q : p)
+             if (q.mode_blob) drmModeDestroyPropertyBlob(fd, q.mode_blob);
+@@ -1968,7 +2052,7 @@ int run_kms(Emu& emu, const Config& cfg) {
+     // none: the display plane scales the frames (the default)
+     {
+         const std::string sh = cfg.str("kms.shader", "none");
+-        if (sh != "none" && sh != "bilinear" && !sh.empty()) dp.shader_name = sh;
++        if (!dp.gpu_fit && sh != "none" && sh != "bilinear" && !sh.empty()) dp.shader_name = sh;
+         // kms.shader_fast (on): a shader's faster built-in twin (ds-grid-2x at 4x), used once it drew a test picture
+         // the same, byte for byte (shader.c)
+         shader_fast = cfg.flag("kms.shader_fast", true) ? 1 : 0;
+@@ -2015,7 +2099,7 @@ int run_kms(Emu& emu, const Config& cfg) {
+     Log(LogLevel::Info, "[kms] %s top, %s bottom, %dx%d at %.3f Hz; %dx%d frames %s, scaled by %s\n",
+         dp.p[0].name.c_str(), dp.p[1].name.c_str(), dp.W, dp.H, 1e6 / dp.period_us, dp.fw, dp.fh,
+         dp.direct ? "drawn straight into the scanout buffers" : "copied into the scanout buffers",
+-        dp.hw ? "the display plane" : "the CPU");
++        dp.gpu_fit ? "the GPU (native scaling and rotation)" : dp.hw ? "the display plane" : "the CPU");
+     start_mark("display open");
+     std::vector<InputDev> devs = open_inputs(touch);
+     start_mark("inputs");
+diff --git a/bananads/src/shader.c b/bananads/src/shader.c
+index a54015e..1990789 100644
+--- a/bananads/src/shader.c
++++ b/bananads/src/shader.c
+@@ -458,10 +458,12 @@ static void bind_src(GLuint tex, const sprog *p) {
+     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, f);
+     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, f);
+ }
+-static void quad(const sprog *p, int sw, int shh, int dw, int dhh) {
++static void quad_transform(const sprog *p, int sw, int shh, int dw, int dhh, int rotation, int vx, int vy, int vw, int vh) {
+     static const GLfloat pos[] = { -1, -1, 1, -1, -1, 1, 1, 1 };
+-    static const GLfloat uv[] = { 0, 0, 1, 0, 0, 1, 1, 1 };     /* buffer row 0 (panel top) at GL y = -1 */
+-    glViewport(0, 0, dw, dhh);
++    static const GLfloat normal[] = { 0, 0, 1, 0, 0, 1, 1, 1 };     /* buffer row 0 (panel top) at GL y = -1 */
++    static const GLfloat turned[] = { 1, 0, 1, 1, 0, 0, 0, 1 };
++    const GLfloat *uv = rotation == 270 ? turned : normal;
++    glViewport(vx, vy, vw, vh);
+     /* a clear first, though the quad covers every pixel: without it the GPU reads each tile's old contents back
+      * from the buffer before drawing (a tile-based GPU keeps what a draw doesn't cover), 3 MB a panel a frame */
+     if (clear_first) glClear(0x4000 /* GL_COLOR_BUFFER_BIT */);
+@@ -474,6 +476,10 @@ static void quad(const sprog *p, int sw, int shh, int dw, int dhh) {
+     glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+ }
+ 
++static void quad(const sprog *p, int sw, int shh, int dw, int dhh) {
++    quad_transform(p, sw, shh, dw, dhh, 0, 0, 0, dw, dhh);
++}
++
+ /* the fast twin's check: a test picture (every 8-bit level in every channel, at every position in the grid's cells)
+  * drawn through both programs into GL textures of the panel's size and read back; the twin is used only if every
+  * byte is the same. Once per frame size (the first frame), ~1 frame of GPU time */
+@@ -615,7 +621,7 @@ int shader_fence(void) {
+ /* copy path: upload a DraStic frame from ordinary (cached) memory into a GL-owned texture, then draw it into dst.
+  * Like stock SDL: nothing DraStic writes is imported into the GPU. GL copies the pixels before glTexSubImage2D
+  * returns, so the caller can hand the buffer back to DraStic right away. */
+-int shader_draw_mem(int panel, const void *px, int sw, int shh, int sp, uint32_t dh, int dw, int dhh, int dp, uint64_t dgen, int finish) {
++int shader_draw_mem_transform(int panel, const void *px, int sw, int shh, int sp, uint32_t dh, int dw, int dhh, int dp, uint64_t dgen, int finish, int rotation, int vx, int vy, int vw, int vh) {
+     gimg *d = image_for(dh, dw, dhh, dp, dgen, 1);
+     if (!d || panel < 0 || panel > 1) return -1;
+     glActiveTexture(GL_TEXTURE0);
+@@ -635,7 +641,15 @@ int shader_draw_mem(int panel, const void *px, int sw, int shh, int sp, uint32_t
+     const sprog *p = pick(sw, shh, dw, dhh);
+     glBindFramebuffer(GL_FRAMEBUFFER, d->fbo);
+     bind_src(up_tex[panel], p);
+-    quad(p, sw, shh, dw, dhh);
++    quad_transform(p, sw, shh, dw, dhh, rotation, vx, vy, vw, vh);
+     if (finish) glFinish();
+     return glGetError() ? -1 : 0;
+ }
++
++int shader_draw_mem(int panel, const void *px, int sw, int shh, int sp, uint32_t dh, int dw, int dhh, int dp, uint64_t dgen, int finish) {
++    return shader_draw_mem_transform(panel, px, sw, shh, sp, dh, dw, dhh, dp, dgen, finish, 0, 0, 0, dw, dhh);
++}
++
++const char *shader_renderer(void) {
++    return (const char *)glGetString(0x1F01 /* GL_RENDERER */);
++}
+diff --git a/bananads/src/stretch.h b/bananads/src/stretch.h
+index 934b399..b507d1c 100644
+--- a/bananads/src/stretch.h
++++ b/bananads/src/stretch.h
+@@ -3,6 +3,7 @@
+ // the pitch with the speed. This repeats or skips short stretches of the waveform instead, each joined where it
+ // lines up best with what was played, so the sound keeps its pitch and only its tempo follows the game.
+ #pragma once
++#include <cstddef>
+ #include <cstdint>
+ #include <vector>
+ 

@@ -1,0 +1,51 @@
+#!/bin/bash
+# Firmware-owned preflight: PortMaster replaces its launcher during self-update.
+# Catch each GUI interpreter start, including the old launcher's restart loop.
+case "$1" in
+    pugwash|*/pugwash)
+        _banana_pm=$(dirname "$(readlink -f "$1")")
+        if [ -f "$_banana_pm/device_info.txt" ]; then
+            export controlfolder="$_banana_pm"
+            # SDL's native backend needs DRM master during SDL_Init, before
+            # PortMaster's own GUI code gets a chance to stop its LÖVE splash.
+            _banana_splash_alive() {
+                case ${PMSPLASH_PID:-} in ''|*[!0-9]*) return 1;; esac
+                [ -r "/proc/$PMSPLASH_PID/cmdline" ] || return 1
+                case "$(tr '\000' ' ' < "/proc/$PMSPLASH_PID/cmdline")" in
+                    *love.*\ */PortMaster/utils/pmsplash*) return 0;;
+                esac
+                return 1
+            }
+            if _banana_splash_alive; then
+                touch "$_banana_pm/utils/pmsplash/stopsplash"
+                for _banana_wait in {1..120}; do
+                    _banana_splash_alive || break
+                    sleep 0.05
+                done
+                if _banana_splash_alive; then kill -TERM "$PMSPLASH_PID"; fi
+                for _banana_wait in {1..20}; do
+                    _banana_splash_alive || break
+                    sleep 0.05
+                done
+                if _banana_splash_alive; then kill -KILL "$PMSPLASH_PID"; fi
+            fi
+            # Supply the OS device environment without changing package files.
+            _banana_version=$(sed -nE 's/^(export )?DEVICE_INFO_VERSION="([^"]+)".*/\2/p' "$_banana_pm/device_info.txt" | head -n 1)
+            if [ -n "$_banana_version" ] && [ "${DEVICE_INFO_VERSION:-}" != "$_banana_version" ]; then
+                unset DEVICE_INFO_VERSION
+                source "$_banana_pm/device_info.txt"
+            fi
+            export DISPLAY_WIDTH=1920 DISPLAY_HEIGHT=1080 DISPLAY_ORIENTATION=0 ASPECT_X=16 ASPECT_Y=9
+            export DEVICE_CPU=SM6125 GPU_DRIVER=freedreno GPU_DRIVER_VERSION=26.3.1
+            export ANALOG_STICKS=2 ANALOGSTICKS=2 ANALOG_TRIGGERS=N DEVICE_ARCH=aarch64
+            _banana_caps=
+            for _banana_cap in $DEVICE_CAPABILITIES; do
+                case $_banana_cap in *x[0-9]*|[0-9]*:[0-9]*|wide|square|lowres|hires) ;; *) _banana_caps="$_banana_caps $_banana_cap" ;; esac
+            done
+            export DEVICE_CAPABILITIES="$_banana_caps aarch64 1920x1080 16:9 wide hires"
+            export SDL_GAMECONTROLLERCONFIG_FILE=/usr/share/banana/portmaster/gamecontrollerdb-duolite.txt
+            export SDL_GAMECONTROLLERCONFIG="$(cat "$SDL_GAMECONTROLLERCONFIG_FILE")"
+        fi
+        ;;
+esac
+exec /usr/bin/python3 "$@"

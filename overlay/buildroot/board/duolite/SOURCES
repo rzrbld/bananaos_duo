@@ -1,0 +1,4 @@
+repository=https://github.com/ROCKNIX/distribution
+commit=21d9dc6759cc3016c2e2e7244574c0e6a5a6bcd8
+linux=7.3.5
+patches=86

@@ -1,0 +1,42 @@
+From: BananaOS Duo Lite bring-up
+Subject: [PATCH] drm/msm/dp: discover fixed sink before selecting mode bpp
+
+The hardwired WL818S is powered by downstream bridge pre_enable callbacks.
+Read its capabilities in the DP pre_enable callback before set_mode uses
+them. Previously prepare_link did this in atomic_enable, after set_mode
+clamped bpp against an all-zero link_info. The first boot selected 18 bpp,
+whereas resume reused the discovered 270000 kHz / one-lane link and chose
+24 bpp. Preserve the existing eDP path and runtime-PM reference pairing.
+
+--- a/drivers/gpu/drm/msm/dp/dp_display.c
++++ b/drivers/gpu/drm/msm/dp/dp_display.c
+@@ -642,7 +642,7 @@
+ 
+ 	drm_dbg_dp(dp->drm_dev, "sink_count=%d\n", dp->link->sink_count);
+ 
+-	if (msm_dp_display->is_edp || msm_dp_display_fixed_sink(dp))
++	if (msm_dp_display->is_edp)
+ 		msm_dp_hpd_plug_handle(dp);
+ 
+ 	rc = pm_runtime_resume_and_get(&msm_dp_display->pdev->dev);
+@@ -1437,6 +1437,20 @@
+ 		return;
+ 	crtc_state = drm_atomic_get_new_crtc_state(state, crtc);
+ 
++	/* Downstream pre_enable has powered the fixed sink. Discover its link
++	 * before mode bpp is bounded by link_info; on the first modeset that
++	 * structure is still empty. Keep the HPD runtime-PM get paired with
++	 * post_disable, exactly as when it ran from prepare_link.
++	 */
++	if (msm_dp_display_fixed_sink(dp)) {
++		int ret = msm_dp_hpd_plug_handle(dp);
++
++		if (ret) {
++			DRM_ERROR("fixed sink discovery failed, rc=%d\n", ret);
++			return;
++		}
++	}
++
+ 	/*
+ 	 * The DPU encoder's .atomic_enable() reads the mode's YUV420 / wide bus
+ 	 * state and runs before the bridge's .atomic_enable(), so the mode must

@@ -1,0 +1,19 @@
+From: BananaOS Duo Lite port
+Subject: [PATCH] Store: identify native Duo Lite before RG DS resolution fallback
+
+--- a/store/device/rocknixds-store
++++ b/store/device/rocknixds-store
+@@ -143,6 +143,13 @@
+     d = os.environ.get("RNDS_STORE_DEVICE")
+     if d:
+         return d
++    if BANANA:
++        try:
++            with open(ROOT + "/etc/banana/board") as f:
++                if f.read().strip() == "duolite":
++                    return "duolite"
++        except OSError:
++            pass
+     try:
+         with open("/proc/device-tree/model", "rb") as f:
+             if b"RG DS Plus" in f.read():

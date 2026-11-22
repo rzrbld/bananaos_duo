@@ -1,0 +1,18 @@
+
+/* BananaOS: kernel-enforced quiet ceiling for every application. Emergency
+ * cooling state 5 (80 C) bypasses the limit; CPU throttling stays intact.
+ * PWM 16 stalled in calibration, PWM 24 ran; 32 gives a little margin.
+ * Kick briefly when starting so the quiet duty does not have to start the rotor. */
+&fan {
+	cooling-levels = <0 32 32 36 40 169 191>;
+	banana,quiet-max-pwm = <40>;
+	banana,emergency-cooling-state = <5>;
+	fan-stop-to-start-percent = <50>;
+	fan-stop-to-start-us = <250000>;
+};
+
+/* Keep the quiet first step through normal frontend temperatures. */
+&cpu10_fan1 { temperature = <55000>; };
+&cpu11_fan1 { temperature = <55000>; };
+&cpu12_fan1 { temperature = <55000>; };
+&cpu13_fan1 { temperature = <55000>; };
