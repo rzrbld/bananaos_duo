@@ -80,6 +80,7 @@ assert b'banana,quiet-max-pwm' in dtb
 assert b'banana,emergency-cooling-state' in dtb
 assert b'VA DMIC2' in dtb and b'VA_MCLK' in dtb and b'MIC BIAS1' in dtb
 assert b'aux-devs' in dtb
+assert b'TX SWR_INPUT2' in dtb and b'qcom,tx-channel-mapping' in dtb
 openabl = source/'buildroot/board/duolite/openabl'
 origin = json.loads((openabl.parent/'openabl-source.json').read_text())
 assert origin['modified'] is False

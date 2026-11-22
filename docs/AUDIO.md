@@ -21,6 +21,8 @@ The built-in microphone is TX DMIC2 (gpio127/gpio128). Its PDM clock is supplied
 
 Hardware validation: capture a low-level 1 kHz speaker tone, then silence. During the tone, the microphone's 1 kHz component rose from below 0.3 sample units to over 370; it returned below 0.2 afterward. The measurements excluded the initial capture transient.
 
-Headset ADC2 maps through SoundWire master port 1, channel bit 0. Its DAPM input and TX selection must both use channel 0 (`TX SWR_INPUT0`, `SWR_MIC0`). The known-working physical headset still returned zeros with this correction, analog gain enabled and all SoundWire inputs tested. Headset capture remains unresolved; this mapping correction is not a validated microphone fix.
+Android testing on this same Duo confirmed both microphones work. Its device tree places ADC2 on TX master port 3, channel bit 1, and its mixer profile remaps ADC2 to ADC3. The Linux test configuration now uses the five-port Bolero TX layout, slave-port mapping `<2 3 4 5>`, the ADC2 master-channel override, and `TX SWR_INPUT2` / `SWR_MIC2`. The old three-port layout put ADC capture onto the reserved PCM-out port. The new route still requires a physical capture test before it can be called working.
+
+Android enables both RX-macro and WCD headphone companders in ULP mode. The test UCM profile follows those settings. Pops at boot and emulator transitions remain an open issue until listening tests verify the changed power sequence.
 
 References: [Qualcomm downstream TX macro](https://github.com/LineageOS/android_kernel_xiaomi_sm6125/blob/lineage-24.0/techpack/audio/asoc/codecs/bolero/tx-macro.c), [Linux VA macro](https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/tree/sound/soc/codecs/lpass-va-macro.c).

@@ -2404,7 +2404,7 @@ index 65a057ed..e22517f9 100644
  		logf("shutdown animation");
  		playOutro(disp, be, o, variant, sound);
 diff --git a/ui/src/settings.cpp b/ui/src/settings.cpp
-index ee1ceffb..05ab422e 100644
+index ee1ceffb..e233dae4 100644
 --- a/ui/src/settings.cpp
 +++ b/ui/src/settings.cpp
 @@ -409,7 +409,9 @@ namespace banana
@@ -2835,7 +2835,7 @@ index ee1ceffb..05ab422e 100644
 +        icon("music", 50, 56, 3);
 +        text("Display & sound", true, 17, 170, 62, p.muted, true, 1.4f);
 +        text("Microphone test", true, 30, 170, 88, p.ink);
-+        text("Input level", true, 20, 50, 180, p.ink);
++        text(micTest.inputName(), true, 20, 50, 180, p.ink);
 +        meter(50, 220, topWidth() - 100, micTest.level() / 100.0);
 +        wrapped(micTest.status(), 20, 50, 270, topWidth() - 100, 2, p.accent);
 +        wrapped("Speak near the microphone. A connected headset uses its own mic.", 17, 50, 360, topWidth() - 100, 2, p.muted);

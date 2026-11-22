@@ -281,7 +281,7 @@
 				"IN1_HPHL", "HPHL_OUT",
 				"IN2_HPHR", "HPHR_OUT",
 				"AMIC2", "MIC BIAS2",
-				"TX SWR_INPUT0", "ADC2_OUTPUT",
+				"TX SWR_INPUT2", "ADC2_OUTPUT",
                 "TX DMIC2", "VA DMIC2",
                 "VA DMIC2", "VA_MCLK",
                 "DMIC2 Pin", "MIC BIAS1";
@@ -977,18 +977,20 @@
 		pinctrl-0 = <&tx_swr_active>;
 		pinctrl-names = "default";
 
-		qcom,din-ports = <3>;
+		/* Bolero TX master: port 1 is PCM out, ports 2/3 carry ADCs,
+		 * ports 4/5 carry codec DMICs. Match Android's lane topology. */
+		qcom,din-ports = <5>;
 		qcom,dout-ports = <0>;
 
-		qcom,ports-sinterval-low =	/bits/ 8 <0x01 0x03 0x03>;
-		qcom,ports-offset1 =		/bits/ 8 <0x01 0x00 0x02>;
-		qcom,ports-offset2 =		/bits/ 8 <0x00 0x00 0x00>;
-		qcom,ports-hstart =		/bits/ 8 <0xff 0xff 0xff>;
-		qcom,ports-hstop =		/bits/ 8 <0xff 0xff 0xff>;
-		qcom,ports-word-length =	/bits/ 8 <0xff 0x00 0xff>;
-		qcom,ports-block-pack-mode =	/bits/ 8 <0xff 0xff 0xff>;
-		qcom,ports-block-group-count =	/bits/ 8 <0xff 0xff 0xff>;
-		qcom,ports-lane-control =	/bits/ 8 <0x00 0x01 0x00>;
+		qcom,ports-sinterval-low = /bits/ 8 <0xff 0x01 0x01 0x03 0x03>;
+		qcom,ports-offset1 = /bits/ 8 <0xff 0x01 0x00 0x01 0x00>;
+		qcom,ports-offset2 = /bits/ 8 <0xff 0x00 0x00 0x00 0x00>;
+		qcom,ports-hstart = /bits/ 8 <0xff 0xff 0xff 0xff 0xff>;
+		qcom,ports-hstop = /bits/ 8 <0xff 0xff 0xff 0xff 0xff>;
+		qcom,ports-word-length = /bits/ 8 <0xff 0xff 0xff 0xff 0xff>;
+		qcom,ports-block-pack-mode = /bits/ 8 <0xff 0xff 0xff 0xff 0xff>;
+		qcom,ports-block-group-count = /bits/ 8 <0xff 0xff 0xff 0xff 0xff>;
+		qcom,ports-lane-control = /bits/ 8 <0xff 0x00 0x01 0x00 0x01>;
 
 		#sound-dai-cells = <1>;
 		#address-cells = <2>;
@@ -997,7 +999,10 @@
 		wcd937x_tx: codec@0,3 {
 			compatible = "sdw20217010a00";
 			reg = <0 3>;
-			qcom,tx-port-mapping = <1 1 2 3>;
+			qcom,tx-port-mapping = <2 3 4 5>;
+			/* Android maps ADC2 to ADC3: second channel of TX port 3.
+			 * TX macro selector ADC2 is SWR_MIC2 in this Linux driver. */
+			qcom,tx-channel-mapping = /bits/ 8 <1 2 1 1 2 3 3 4 1 2 3>;
 		};
 	};
 

@@ -5,12 +5,13 @@
 #include <algorithm>
 #include <cmath>
 #include <chrono>
+#include <fstream>
 
 namespace banana {
 std::string MicTest::status() const { std::lock_guard<std::mutex> guard(lock); return state; }
 void MicTest::message(const std::string& text) { std::lock_guard<std::mutex> guard(lock); state = text; }
 void MicTest::start() {
-    stop(); quit = false; recorded = false; command = 0; meter = 0;
+    stop(); quit = false; recorded = false; command = 0; meter = 0; input = 0;
     message("Opening microphone..."); worker = std::thread(&MicTest::run, this);
 }
 void MicTest::stop() {
@@ -18,6 +19,14 @@ void MicTest::stop() {
     if (worker.joinable()) worker.join();
     recorded = false; meter = 0;
 }
+#ifdef BANANA_ALSA
+static int captureInput() {
+    std::ifstream route("/run/banana/duolite-audio-route");
+    std::string output, input;
+    if (route >> output >> input) return input == "Headset" ? 2 : input == "Mic" ? 1 : 0;
+    return 0;
+}
+#endif
 void MicTest::run() {
 #ifndef BANANA_ALSA
     message("Microphone testing is unavailable in this build.");
@@ -28,6 +37,9 @@ void MicTest::run() {
     recording.reserve(duration);
     bool saving = false;
     auto open = [&](snd_pcm_t** pcm, snd_pcm_stream_t stream, unsigned channels) {
+        // The OS replaces asound.conf on jack changes. A new stream must use
+        // the current route, including playback after plugging headphones in.
+        snd_config_update_free_global();
         int err = snd_pcm_open(pcm, "default", stream, SND_PCM_NONBLOCK);
         if (err >= 0) err = snd_pcm_set_params(*pcm, SND_PCM_FORMAT_S16_LE,
             SND_PCM_ACCESS_RW_INTERLEAVED, channels, rate, 1, 60000);
@@ -39,9 +51,25 @@ void MicTest::run() {
         return err >= 0;
     };
     if (!open(&capture, SND_PCM_STREAM_CAPTURE, 1)) return;
+    input = captureInput();
+    auto nextRoute = std::chrono::steady_clock::now();
     message("Speak to test the microphone.");
     short samples[frames];
     while (!quit) {
+        auto now = std::chrono::steady_clock::now();
+        if (now >= nextRoute) {
+            nextRoute = now + std::chrono::milliseconds(250);
+            int selected = captureInput();
+            if (selected && selected != input.load()) {
+                snd_pcm_close(capture); capture = nullptr; meter = 0;
+                // SoundWire ports are prepared when the stream opens. Merely
+                // changing the mixer underneath an open stream is insufficient.
+                if (saving) { saving = false; recording.clear(); recorded = false; }
+                input = selected;
+                if (!open(&capture, SND_PCM_STREAM_CAPTURE, 1)) break;
+                message("Microphone changed. Speak to test it.");
+            }
+        }
         int action = command.exchange(0);
         if (action == 1) {
             recording.clear(); recorded = false; saving = true;
@@ -72,7 +100,8 @@ void MicTest::run() {
         auto n = snd_pcm_readi(capture, samples, frames);
         if (n == -EAGAIN) { snd_pcm_wait(capture, 50); continue; }
         if (n < 0) {
-            if (snd_pcm_recover(capture, n, 1) < 0) { message("Microphone capture failed."); break; }
+            if (snd_pcm_recover(capture, n, 1) < 0 ||
+                (snd_pcm_state(capture) == SND_PCM_STATE_PREPARED && snd_pcm_start(capture) < 0)) { message("Microphone capture failed."); break; }
             continue;
         }
         double energy = 0;
