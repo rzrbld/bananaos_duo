@@ -7,7 +7,7 @@ path and guard repeated mute callbacks against duplicate IRQ enable/disable.
 
 Reference: https://lkml.iu.edu/hypermail/linux/kernel/2511.3/00064.html
 Original idea: Jonathan Marek <jonathan@marek.ca>
-Adaptation for BananaOS Duo Lite; hardware listening validation pending.
+Adaptation for BananaOS Duo Lite; user listening test passed on Alpha32.
 
 --- a/sound/soc/codecs/wcd937x.c
 +++ b/sound/soc/codecs/wcd937x.c
