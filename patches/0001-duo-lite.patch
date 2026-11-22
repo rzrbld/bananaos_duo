@@ -867,7 +867,7 @@ index c4d4f4b5..0f89f8c6 100755
  # one at a time: the lid shut again within a second of a wake ran this pre beside the wake's post (still loading the
  # driver, wpa_supplicant not started yet), so pre found no wpa.pid, left Wi-Fi marked off, and the next wake didn't
 diff --git a/system/rootfs/etc/init.d/rcK b/system/rootfs/etc/init.d/rcK
-index 3db0e80c..707d3ac0 100755
+index 3db0e80c..cd104b6b 100755
 --- a/system/rootfs/etc/init.d/rcK
 +++ b/system/rootfs/etc/init.d/rcK
 @@ -4,6 +4,15 @@
@@ -886,7 +886,7 @@ index 3db0e80c..707d3ac0 100755
  # the game's process group first (banana-ui starts each game in its own session; a poweroff over SSH reaches
  # BananaDS, SuperDrastic and the ports too, and they write their saves), then the menu; waited for until they are
  # gone, up to 3 s, instead of a second whatever happened
-@@ -24,9 +33,13 @@ done
+@@ -24,10 +33,15 @@ done
  # the unmount, the last half-minute of a recording was lost at every restart)
  killall bananad 2>/dev/null
  for i in 1 2 3 4 5 6 7 8 9 10; do pidof bananad >/dev/null || break; sleep 0.1; done
@@ -901,9 +901,11 @@ index 3db0e80c..707d3ac0 100755
 +    /usr/libexec/banana/wifi down 2>/dev/null
 +fi
  /usr/libexec/banana/bluetooth down 2>/dev/null   # (its pairings saved on the card)
++[ ! -x /usr/libexec/banana/duolite-clock ] || /usr/libexec/banana/duolite-clock save
  hwclock -w 2>/dev/null
  # the panels' brightness as it is now, for bananad to restore at the next boot ("<top> <bottom>" in thousandths): only
-@@ -49,7 +62,18 @@ else
+ # the settings rows, F + volume and the DS emulators' menus wrote the file, so a level set any other way (or set a moment
+@@ -49,7 +63,18 @@ else
      [ -n "$t" ] || t=$b; [ -n "$b" ] || b=$t
      [ -n "$t" ] && [ "$t $b" != "$old_t $old_b" ] && echo "$t $b" > /data/banana/backlight
  fi
@@ -1313,7 +1315,7 @@ index 89a5030b..d3676f91 100755
  # bluez-alsa's software volume when they have none), in straight steps: the headphones apply their own curve
  if [ "$CARD" = bluealsa ]; then
 diff --git a/system/rootfs/usr/libexec/banana/wifi b/system/rootfs/usr/libexec/banana/wifi
-index 7bd0a08c..096962b8 100755
+index 7bd0a08c..d02c735a 100755
 --- a/system/rootfs/usr/libexec/banana/wifi
 +++ b/system/rootfs/usr/libexec/banana/wifi
 @@ -25,8 +25,13 @@ running() { $W ping 2>/dev/null | grep -q PONG; }	# whether one answers, pid fil
@@ -1340,15 +1342,26 @@ index 7bd0a08c..096962b8 100755
      ip link set wlan0 up
      wpa_supplicant -B -i wlan0 -c /run/banana/wpa.conf -P /run/banana/wpa.pid 9>&- || return 1
      $W -a /usr/libexec/banana/wifi -B -P /run/banana/wpa_cli.pid 9>&-
-@@ -104,7 +110,7 @@ wlan0)
+@@ -94,7 +100,7 @@ test)
+     if [ ! -f /run/banana/time-synced ] && [ $net = ok ]; then
+         for i in 1 2 3 4 5 6 7 8 9 10; do pidof ntpd >/dev/null || break; sleep 1; done
+         [ -f /run/banana/time-synced ] ||
+-            { timeout 12 ntpd -q -n -p pool.ntp.org >/dev/null 2>&1 && { hwclock -w 2>/dev/null; date +%s > /run/banana/time-synced; }; }
++            { timeout 12 ntpd -q -n -p pool.ntp.org >/dev/null 2>&1 && { hwclock -w 2>/dev/null; [ ! -x /usr/libexec/banana/duolite-clock ] || /usr/libexec/banana/duolite-clock save; date +%s > /run/banana/time-synced; }; }
+     fi
+     [ -f /run/banana/time-synced ] && echo "time ok" || echo "time fail"
+     ;;
+@@ -104,8 +110,8 @@ wlan0)
      CONNECTED)
          stop /run/banana/udhcpc.pid
          # (time-synced: the clock came from the network this boot, for wifi test)
 -        udhcpc -b -t 5 -i wlan0 -p /run/banana/udhcpc.pid -s /usr/share/udhcpc/default.script >/dev/null 2>&1 &&
+-            { ntpd -q -n -p pool.ntp.org >/dev/null 2>&1 && { hwclock -w 2>/dev/null; date +%s > /run/banana/time-synced; }; } &
 +        udhcpc -b -t 5 -i wlan0 -p /run/banana/udhcpc.pid -s /usr/share/udhcpc/default.script >"${BANANA_WIFI_DHCP_LOG:-/dev/null}" 2>&1 &&
-             { ntpd -q -n -p pool.ntp.org >/dev/null 2>&1 && { hwclock -w 2>/dev/null; date +%s > /run/banana/time-synced; }; } &
++            { ntpd -q -n -p pool.ntp.org >/dev/null 2>&1 && { hwclock -w 2>/dev/null; [ ! -x /usr/libexec/banana/duolite-clock ] || /usr/libexec/banana/duolite-clock save; date +%s > /run/banana/time-synced; }; } &
          # Settings > System > Updates > Update check: Daily asks GitHub for a newer version, once a day at most (the update
          # script reads the setting itself; nothing is downloaded). After the clock had its chance: TLS needs it
+         ( sleep 20; /usr/libexec/banana/update check --daily ) >/dev/null 2>&1 &
 diff --git a/system/rootfs/usr/share/banana/portmaster/mod_BananaOS.txt b/system/rootfs/usr/share/banana/portmaster/mod_BananaOS.txt
 index 15acf19b..6907046b 100644
 --- a/system/rootfs/usr/share/banana/portmaster/mod_BananaOS.txt

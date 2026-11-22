@@ -115,7 +115,7 @@ assert b'banana-ui --panels-on' not in cat('etc/init.d/rcS')
 assert b'BANANA_SERIAL_MODESET' in cat('usr/bin/banana-ui')
 for rel in ['etc/init.d/rcS','etc/inittab', 'usr/libexec/banana/duolite-service',
             'usr/libexec/banana/duolite-import-network','usr/libexec/banana/duolite-log-watch',
-            'usr/libexec/banana/duolite-early-log']:
+            'usr/libexec/banana/duolite-early-log', 'usr/libexec/banana/duolite-clock']:
     assert cat(rel) == (source/'buildroot/board/duolite/rootfs'/rel).read_bytes(), rel
 for rel in ['usr/libexec/banana/wifi','usr/libexec/banana/ssh','usr/libexec/banana/run-bananads',
             'usr/libexec/banana/run-nds','usr/libexec/banana/bluetooth','usr/libexec/banana/run-store',

@@ -13,6 +13,7 @@ test: prepare
 	python3 tests/test-update.py
 	bash build/source/ui/tests/update-apply.sh
 	python3 build/source/system/bananad/tests/test-duolite-hardware.py
+	python3 build/source/tools/duolite/test-clock.py
 
 release: build check test
 	sh scripts/build.sh legal-info
