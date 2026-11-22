@@ -25,6 +25,8 @@ The **Checks** workflow runs on main pushes and pull requests: source reconstruc
 
 The **Firmware** workflow builds complete images on `v*` tags or manual dispatch. Manual builds retain downloadable Actions artifacts. A matching version tag additionally publishes a GitHub release after build, image verification, tests, source collection and checksum verification succeed. Alpha tags produce prereleases. Assets upload to a draft first; publishing the draft makes the complete release discoverable by the handheld.
 
+Tag builds publish directly from the verified build job to GitHub Releases. Manual-build Actions artifacts are retained for one day. Source packaging also collects the pinned GCC runtime and glibc sources from Bootlin, alongside its SDK configuration and the Buildroot license manifests.
+
 The first hardware-tested release can be published from an identical local source tree and verified build. An existing published release is retained when its tag's workflow finishes; CI never replaces those assets.
 
 ## Updating upstream

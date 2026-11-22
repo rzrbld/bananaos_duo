@@ -9,6 +9,7 @@ import re
 import shutil
 import subprocess
 import tarfile
+import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -24,6 +25,20 @@ def main():
     p = argparse.ArgumentParser(description=__doc__)
     for name in ('images', 'source', 'legal', 'output'): p.add_argument('--'+name, type=Path, required=True)
     args = p.parse_args(); out = args.output; out.mkdir(parents=True, exist_ok=True)
+    subprocess.run(['git', '-C', str(ROOT), 'diff', '--exit-code', '--quiet'], check=True)
+    subprocess.run(['git', '-C', str(ROOT), 'diff', '--cached', '--exit-code', '--quiet'], check=True)
+    port_commit = subprocess.check_output(['git', '-C', str(ROOT), 'rev-parse', 'HEAD'], text=True).strip()
+    pins = json.loads((ROOT/'sources.json').read_text())
+    # External toolchain legal-info contains the SDK binary. Collect matching
+    # GCC runtime/glibc sources too, from Bootlin's pinned source archive.
+    runtime = ROOT/'build/toolchain-runtime'
+    for file in pins['ToolchainRuntime']['sources']:
+        dest = runtime/file['path']; dest.parent.mkdir(parents=True, exist_ok=True)
+        if not dest.is_file() or sha(dest) != file['sha256']:
+            with urllib.request.urlopen(file['url'], timeout=120) as response, dest.with_suffix(dest.suffix+'.new').open('wb') as f:
+                shutil.copyfileobj(response, f)
+            dest.with_suffix(dest.suffix+'.new').replace(dest)
+        assert sha(dest) == file['sha256'], 'Toolchain source hash mismatch: '+file['path']
     version = (ROOT/'VERSION').read_text().strip()
     assert re.fullmatch(r'\d+\.\d+\.\d+(?:-alpha\.\d+)?', version), version
     assert (args.source/'buildroot/board/duolite/RELEASE').read_text().strip() == version
@@ -61,6 +76,10 @@ def main():
             path = args.source/name
             if path.exists() or path.is_symlink(): tar.add(path, arcname='source/BananaLinux/'+name, recursive=False)
         tar.add(args.legal, arcname='source/legal-info')
+        tar.add(runtime, arcname='source/toolchain-runtime')
+        toolchain = args.legal.parent/'host/opt/ext-toolchain'
+        for file in ('buildroot.config', 'summary.csv', 'README.txt'):
+            tar.add(toolchain/file, arcname='source/toolchain-runtime/'+file)
         tar.add(ROOT/'upstream/buildroot', arcname='source/buildroot', filter=source_filter)
         for folder in ('patches', 'overlay', 'scripts', 'docs', 'tests', '.github'):
             tar.add(ROOT/folder, arcname='source/port/'+folder, filter=source_filter)
@@ -78,8 +97,8 @@ def main():
                 i += 1
         archive.unlink()
     manifest = {'device': 'Retroid Pocket Duo Lite', 'board': 'duolite', 'version': version,
-                'repository': 'rzrbld/bananaos_duo', 'components': hashes,
-                'upstream': json.loads((ROOT/'sources.json').read_text()), 'includes_user_data': False,
+                'repository': 'rzrbld/bananaos_duo', 'port_commit': port_commit, 'components': hashes,
+                'upstream': pins, 'includes_user_data': False,
                 'openabl': json.loads((args.source/'buildroot/board/duolite/openabl-source.json').read_text())}
     (out/'release-manifest.json').write_text(json.dumps(manifest, indent=2)+'\n')
     files = sorted(p for p in out.iterdir() if p.is_file() and p.name != 'SHA256SUMS-duolite.txt')

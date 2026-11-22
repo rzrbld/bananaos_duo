@@ -23,12 +23,13 @@ jobs:
       - name: Reconstruct source and test A/B updates and hardware policy
         run: make test
       - name: Compile launcher and test unequal-panel presentation
+        working-directory: build/source/ui
         run: |
-          make -C build/source/ui host
-          make -C build/source/ui tests/plane-selection-test tests/scanout-test tests/splash-test
-          build/source/ui/tests/plane-selection-test
-          build/source/ui/tests/scanout-test
-          build/source/ui/tests/splash-test
+          make host
+          make tests/plane-selection-test tests/scanout-test tests/splash-test
+          tests/plane-selection-test
+          tests/scanout-test
+          tests/splash-test
       - name: Check shell and Python syntax
         run: |
           sh -n scripts/build.sh

@@ -43,6 +43,7 @@ def prepare():
     if temp.exists(): shutil.rmtree(temp)
     temp.parent.mkdir(parents=True, exist_ok=True)
     run('git', 'clone', '--quiet', '--no-hardlinks', str(ROOT/'upstream/BananaLinux'), str(temp))
+    run('git', '-C', str(temp), 'remote', 'set-url', 'origin', PINS['BananaLinux']['url'])
     run('git', '-C', str(temp), 'checkout', '--quiet', '--detach', PINS['BananaLinux']['commit'])
     br = temp/'.buildroot'; br.mkdir()
     archive = subprocess.Popen(['git', '-C', str(ROOT/'upstream/buildroot'), 'archive', PINS['Buildroot']['commit']], stdout=subprocess.PIPE)
