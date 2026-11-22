@@ -2,6 +2,10 @@
 set -eu
 HERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 T=$1
+# UCM creates merged mixer controls here; the immutable root must point into RAM.
+mkdir -p "$T/var/lib"
+rm -rf "$T/var/lib/alsa"
+ln -s /run/banana/alsa "$T/var/lib/alsa"
 # Remove the obsolete app-mutating helper from incremental builds too.
 rm -f "$T/usr/libexec/banana/portmaster-duolite-ui"
 mkdir -p "$T/etc/banana" "$T/data" "$T/boot" "$T/run" "$T/usr/share/banana/duolite"

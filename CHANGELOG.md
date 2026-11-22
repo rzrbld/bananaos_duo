@@ -1,5 +1,17 @@
 # Changes
 
+## 0.1.0-alpha.27
+
+- Added native speaker/headphone routing, jack switching and physical volume control for the integrated Duo Lite audio card.
+- Included the Duo Lite ALSA UCM profiles and writable runtime mixer configuration.
+- Fixed the built-in microphone's missing VA PDM-clock and MIC BIAS1 dependencies; verified capture with an acoustic tone test.
+- Added Settings → Display & sound → Microphone test using the standard BananaOS theme, live level meter and RAM-only five-second recording/playback.
+- Released launcher audio while the microphone test is open, preventing playback conflicts and menu clicks in recordings.
+- Adapted the volume indicator to the wide launcher and added its handling to the single-screen game panel.
+- Retained the existing kernel quiet-fan ceiling and emergency cooling policy.
+
+Known issue: a known-working headset microphone is detected, but capture remains silent. The corrected SoundWire mapping alone does not resolve it.
+
 ## 0.1.0-alpha.26
 
 - Published the Duo Lite port as pinned upstream submodules, patches and device files.

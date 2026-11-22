@@ -1,0 +1,38 @@
+#!/bin/sh
+# Native ALSA routes from ROCKNIX's Duo Lite UCM profile.
+set -eu
+card=$1; output=$2; input=$3
+case $card in ''|*[!0-9]*) exit 2 ;; esac
+case $output in Speaker|Headphones|Hold) ;; *) exit 2 ;; esac
+case $input in Mic|Headset) ;; *) exit 2 ;; esac
+mkdir -p /run/banana
+oldout=; oldin=
+if [ -r /run/banana/duolite-audio-route ]; then read -r oldout oldin < /run/banana/duolite-audio-route || :; fi
+case $oldout in Speaker|Headphones|Hold) ;; *) oldout= ;; esac
+case $oldin in Mic|Headset) ;; *) oldin= ;; esac
+# Set safe persisted levels before enabling either physical output.
+/usr/libexec/banana/volume-duolite "$card" PCM restore
+/usr/libexec/banana/volume-duolite "$card" HP restore
+{
+    echo 'set _verb HiFi'
+    if [ -n "$oldout" ] && [ "$oldout" != Hold ]; then
+        echo "set _enadev $oldout"
+        [ "$oldout" = "$output" ] || echo "set _disdev $oldout"
+    elif [ -z "$oldout" ] && [ "$output" != Headphones ]; then
+        echo 'set _enadev Headphones'; echo 'set _disdev Headphones'
+    fi
+    if [ -n "$oldin" ]; then
+        echo "set _enadev $oldin"
+        [ "$oldin" = "$input" ] || echo "set _disdev $oldin"
+    elif [ "$input" = Mic ]; then
+        echo 'set _enadev Headset'; echo 'set _disdev Headset'
+    fi
+    [ "$output" = Hold ] || [ "$output" = "$oldout" ] || echo "set _enadev $output"
+    [ "$input" = "$oldin" ] || echo "set _enadev $input"
+} > /run/banana/duolite-ucm.batch
+alsaucm -c "hw:$card" -b /run/banana/duolite-ucm.batch
+if [ "$output" != Speaker ]; then
+    amixer -q -c "$card" cset 'name=SPK_L Speaker Switch' 0
+    amixer -q -c "$card" cset 'name=SPK_R Speaker Switch' 0
+fi
+printf '%s %s\n' "$output" "$input" > /run/banana/duolite-audio-route

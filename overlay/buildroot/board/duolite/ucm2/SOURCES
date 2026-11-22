@@ -1,0 +1,5 @@
+Base device profiles: ROCKNIX/distribution
+Commit: 21d9dc6759cc3016c2e2e7244574c0e6a5a6bcd8
+Path: projects/ROCKNIX/packages/audio/alsa-ucm-conf/sources/ucm2/Qualcomm/sm6125
+The Duo Lite port adds an ALSA card alias and adapts the headset capture channel.
+Microphone clock and bias dependencies are in the board device tree.

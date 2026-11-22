@@ -268,6 +268,8 @@
 	sound {
 		compatible = "qcom,qrb4210-rb2-sndcard";
 		model = "RetroidPocketDuoLite";
+        /* The VA macro supplies the PDM clock; capture stays on TX DMA. */
+        aux-devs = <&vamacro>;
 
 		widgets = "Speaker", "SPK_L Speaker",
 			  "Speaker", "SPK_R Speaker";
@@ -279,7 +281,10 @@
 				"IN1_HPHL", "HPHL_OUT",
 				"IN2_HPHR", "HPHR_OUT",
 				"AMIC2", "MIC BIAS2",
-				"TX SWR_INPUT1", "ADC2_OUTPUT";
+				"TX SWR_INPUT0", "ADC2_OUTPUT",
+                "TX DMIC2", "VA DMIC2",
+                "VA DMIC2", "VA_MCLK",
+                "DMIC2 Pin", "MIC BIAS1";
 
 		pinctrl-0 = <&pri_mi2s_active>, <&dmic23_active>;
 		pinctrl-names = "default";
@@ -1009,6 +1014,7 @@
 		#clock-cells = <0>;
 		clock-output-names = "fsgen";
 		#sound-dai-cells = <1>;
+		qcom,dmic-sample-rate = <2400000>;
 	};
 
 	remoteproc_mpss: remoteproc@6080000 {

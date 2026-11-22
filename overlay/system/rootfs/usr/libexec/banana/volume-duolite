@@ -1,0 +1,37 @@
+#!/bin/sh
+set -eu
+card=$1; control=$2; shift 2; action=$1
+case $card in ''|*[!0-9]*) exit 2 ;; esac
+case $control in PCM) route=speaker ;; HP) route=headphones ;; *) exit 2 ;; esac
+state=/data/banana/volume-duolite-$route
+percent=$(cat "$state" 2>/dev/null || echo 40)
+case $percent in ''|*[!0-9]*) percent=40 ;; esac
+[ "$percent" -le 100 ] || percent=40
+SPK_TABLE="1023 931 863 808 763 724 689 659 631 606 583 562 542 524 506 490 475 460 446 433 421 409 397 386 375 365 355 346 336 327 319 310 302 294 287 279 272 265 258 251 244 238 232 225 219 213 208 202 196 191 186 180 175 170 165 160 156 151 146 142 137 133 129 124 120 116 112 108 104 100 96 92 89 85 81 78 74 71 67 64 60 57 54 50 47 44 41 38 35 32 29 26 23 20 17 14 11 8 5 3 0"
+HP_TABLE="0 0 0 0 0 6 11 15 18 21 24 26 29 31 33 35 36 38 39 41 42 43 45 46 47 48 49 50 51 52 53 53 54 55 56 57 57 58 59 59 60 61 61 62 63 63 64 64 65 65 66 66 67 67 68 68 69 69 70 70 71 71 72 72 72 73 73 74 74 74 75 75 75 76 76 77 77 77 78 78 78 79 79 79 79 80 80 80 81 81 81 82 82 82 82 83 83 83 83 84 84"
+
+case $action in
+get) echo "$percent"; exit 0 ;;
+set) percent=${2:-0} ;;
+up) percent=$((percent + ${2:-5})) ;;
+down) percent=$((percent - ${2:-5})) ;;
+restore) ;;
+*) exit 2 ;;
+esac
+case ${percent#-} in ''|*[!0-9]*) exit 2 ;; esac
+[ "$percent" -ge 0 ] || percent=0
+[ "$percent" -le 100 ] || percent=100
+if [ "$route" = speaker ]; then
+    set -- $SPK_TABLE; shift "$percent"; value=$1
+    amixer -q -c "$card" cset 'name=SPK_L PCM Playback Volume' "$value"
+    amixer -q -c "$card" cset 'name=SPK_R PCM Playback Volume' "$value"
+else
+    set -- $HP_TABLE; shift "$percent"; value=$1
+    amixer -q -c "$card" cset 'name=RX_RX0 Digital Volume' "$value"
+    amixer -q -c "$card" cset 'name=RX_RX1 Digital Volume' "$value"
+fi
+mkdir -p /data/banana
+printf '%s\n' "$percent" > "$state.new"
+mv -f "$state.new" "$state"
+# get/set retain the existing volume helper contract; key steps return the OSD level.
+case $action in up|down) echo "$percent" ;; esac

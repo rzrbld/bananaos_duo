@@ -78,6 +78,8 @@ assert struct.unpack_from('<H',kernel,off+4)[0] == 0xaa64
 dtb = (base/'sm6125-retroid-pocket-duo-lite.dtb').read_bytes()
 assert b'banana,quiet-max-pwm' in dtb
 assert b'banana,emergency-cooling-state' in dtb
+assert b'VA DMIC2' in dtb and b'VA_MCLK' in dtb and b'MIC BIAS1' in dtb
+assert b'aux-devs' in dtb
 openabl = source/'buildroot/board/duolite/openabl'
 origin = json.loads((openabl.parent/'openabl-source.json').read_text())
 assert origin['modified'] is False
@@ -97,6 +99,14 @@ assert b'portmaster-duolite-ui' not in command('unsquashfs', '-l', squash)
 def cat(name):
     return command('unsquashfs','-cat',squash,name)
 assert cat('etc/banana/board').strip() == b'duolite'
+assert cat('etc/banana/release') == (source/'buildroot/board/duolite/RELEASE').read_bytes()
+assert b'Microphone test' in cat('usr/bin/banana-ui')
+for rel in ['usr/libexec/banana/duolite-audio', 'usr/libexec/banana/volume-duolite']:
+    assert cat(rel) == (source/'system/rootfs'/rel).read_bytes(), rel
+for name in ['RetroidPocketDuoLite.conf', 'HiFi-RetroidPocketDuoLite.conf']:
+    assert cat('usr/share/alsa/ucm2/Qualcomm/sm6125/'+name) == (source/'buildroot/board/duolite/ucm2/Qualcomm/sm6125'/name).read_bytes(), name
+for name in ['aplay', 'arecord']:
+    assert cat('usr/bin/'+name).startswith(b'\x7fELF'), name
 release = cat('usr/lib/os-release')
 assert b'NAME="BananaOS"\n' in release
 assert b'HW_DEVICE="Retroid Pocket Duo Lite"\n' in release
