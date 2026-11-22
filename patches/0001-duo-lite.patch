@@ -2438,10 +2438,33 @@ index 65a057ed..e22517f9 100644
  		logf("shutdown animation");
  		playOutro(disp, be, o, variant, sound);
 diff --git a/ui/src/settings.cpp b/ui/src/settings.cpp
-index ee1ceffb..345f13ac 100644
+index ee1ceffb..92186ad0 100644
 --- a/ui/src/settings.cpp
 +++ b/ui/src/settings.cpp
-@@ -409,7 +409,9 @@ namespace banana
+@@ -373,7 +373,7 @@ namespace banana
+ 	// Settings > Other systems > each RetroArch system's emulator: the cores that can run it, the image's first (the
+ 	// default), shown when installed: in the image (/usr/lib/libretro) or downloaded with RetroArch's Core Downloader
+ 	// (/data/retroarch/cores, libretro_directory). run-retroarch looks in the same two places.
+-	static const struct RaSystem { const char* id; const char* label; std::vector<std::pair<const char*, const char*>> cores; } RA_SYSTEMS[] = {
++	static const struct RaSystem { const char* id; const char* label; std::vector<std::pair<const char*, const char*>> cores; bool duoliteOnly = false; } RA_SYSTEMS[] = {
+ 		{ "gba", "Game Boy Advance", { { "gpsp", "gpSP" }, { "mgba", "mGBA" }, { "bananagba", "BananaGBA" }, { "vba_next", "VBA Next" }, { "vbam", "VBA-M" }, { "meteor", "Meteor" } } },
+ 		{ "gbc", "Game Boy Color", { { "gambatte", "Gambatte" }, { "mgba", "mGBA" }, { "gearboy", "Gearboy" }, { "tgbdual", "TGB Dual" } } },
+ 		{ "gb", "Game Boy", { { "gambatte", "Gambatte" }, { "mgba", "mGBA" }, { "gearboy", "Gearboy" }, { "tgbdual", "TGB Dual" } } },
+@@ -385,6 +385,13 @@ namespace banana
+ 		{ "zxspectrum", "ZX Spectrum", { { "fuse", "Fuse" } } },
+ 		{ "psx", "PlayStation", { { "pcsx_rearmed", "PCSX ReARMed" }, { "swanstation", "SwanStation" }, { "mednafen_psx", "Beetle PSX" } } },
+ 		{ "n64", "Nintendo 64", { { "mupen64plus_next", "Mupen64Plus-Next" }, { "parallel_n64", "ParaLLEl N64" } } },
++		{ "3ds", "Nintendo 3DS", { { "citra", "Citra" } }, true },
++		{ "psp", "PlayStation Portable", { { "ppsspp", "PPSSPP" } }, true },
++		{ "dreamcast", "Dreamcast", { { "flycast", "Flycast" } }, true },
++		{ "mastersystem", "Master System", { { "genesis_plus_gx", "Genesis Plus GX" }, { "picodrive", "PicoDrive" }, { "gearsystem", "Gearsystem" } }, true },
++		{ "mame", "Arcade (MAME)", { { "mame2003_plus", "MAME 2003-Plus" }, { "mame2003", "MAME 2003" }, { "mame2010", "MAME 2010" }, { "mame", "MAME" } }, true },
++		{ "amstradcpc", "Amstrad CPC", { { "cap32", "Caprice32" }, { "crocods", "CrocoDS" } }, true },
++		{ "wii", "Wii", { { "dolphin", "Dolphin" } }, true },
+ 	};
+ 	static bool coreInstalled(const std::string& core)
+ 	{
+@@ -409,7 +416,9 @@ namespace banana
  		return sig;
  	}
  
@@ -2452,7 +2475,7 @@ index ee1ceffb..345f13ac 100644
  	static int backlightPair(const std::string& path, int i)
  	{
  		int t = 0, b = 0;
-@@ -472,6 +474,12 @@ namespace banana
+@@ -472,6 +481,12 @@ namespace banana
  			{ "0%", "10%", "20%", "30%", "40%", "50%", "60%", "70%", "80%", "90%", "100%" }, { "0", "10", "20", "30", "40", "50", "60", "70", "80", "90", "100" }, Item::VOLUME);
  		add(D, "music", "Menu sounds", "The menu's clicks, and the cartridge sound when a game starts.", menu, "sounds", { "On", "Off" }, { "on", "off" });
  		items.back().hints = { "The menu plays its sounds.", "The menu is silent. Games keep their sound." };
@@ -2465,7 +2488,7 @@ index ee1ceffb..345f13ac 100644
  		add(D, "music", "Speaker EQ", "", "", "speaker_eq_page", {}, {}, Item::PAGE);
  		add(D, "picture", "Shown systems", "Which systems are on the home row. A opens the list.", "", "shelves", {}, {}, Item::PAGE);
  		add(D, "picture", "Menu look", "The top screen's motion, battery and clock, the boot animation, and the DS cartridges.", "", "menu_look", {}, {}, Item::PAGE);
-@@ -501,6 +509,14 @@ namespace banana
+@@ -501,6 +516,14 @@ namespace banana
  		add(P, "moon", "Waking up", "How the handheld wakes from sleep.",
  			power, "fast_resume", { "Fast", "Careful" }, { "yes", "no" });
  		items.back().hints = { "Wakes up quickly.", "Wakes up a little slower, the safest way. Chosen by itself if waking ever goes wrong." };
@@ -2480,7 +2503,7 @@ index ee1ceffb..345f13ac 100644
  		add(P, "moon", "LEDs", "The lights on the handheld: green, red when the battery is low, amber while charging.", power, "led_brightness",
  			{ "Bright", "Dim", "Off" }, { "255", "40", "0" });
  		items.back().hints = { "Full brightness.", "Softer lights.", "No lights." };
-@@ -508,9 +524,13 @@ namespace banana
+@@ -508,9 +531,13 @@ namespace banana
  		// then a page for each emulator's own settings, in that emulator's files, both whichever is chosen (to set one up
  		// before switching to it). Both draw the DS's 3D with SuperDrastic's Gengis Engine, always (run-drastic, run-bananads).
  		const char* N = "Nintendo DS";
@@ -2494,7 +2517,7 @@ index ee1ceffb..345f13ac 100644
  		add(N, "nds", "Quick resume", "What quitting a game does.",
  			menu, "quick_resume", { "Off", "On" }, { "off", "on" });
  		items.back().hints = { "Quitting ends the game. Next time it starts from its title screen.", "Quitting keeps your place, even through a shutdown. Next time the game carries on from there." };
-@@ -522,7 +542,7 @@ namespace banana
+@@ -522,7 +549,7 @@ namespace banana
  		// the DS's own name (its firmware's user name), in both emulators at once: what a game calls you (#30)
  		add(N, "nds", "DS name", "The name the DS itself is set to: what games call you. 10 characters at most.",
  			"", "ds_name", {}, {}, Item::PAGE);
@@ -2503,7 +2526,7 @@ index ee1ceffb..345f13ac 100644
  		add(N, "nds", "BananaDS", "BananaDS's own settings: picture, speed, sound and its hotkeys.", "", "nds_bananads", {}, {}, Item::PAGE);
  		std::vector<std::string> shaderNames, shaderValues;
  		shaderChoices(data, shaderNames, shaderValues);
-@@ -533,7 +553,9 @@ namespace banana
+@@ -533,7 +560,9 @@ namespace banana
  		{
  			const char* BD = "BananaDS";
  			const std::string bds = "/data/bananads/bananads.conf";
@@ -2514,7 +2537,7 @@ index ee1ceffb..345f13ac 100644
  			add(BD, "nds", "3D resolution", "How sharp DS games' 3D is drawn.",
  				bds, "render.scale", { "1x", "2x", "3x (experimental)", "4x (experimental)" }, { "1", "2", "3", "4" });
  			items.back().def = "2";	// (#250: smallest to largest, left to right; 2x stays the default, as run-bananads writes it)
-@@ -581,7 +603,7 @@ namespace banana
+@@ -581,7 +610,7 @@ namespace banana
  				"", "nds-reset-bananads", { "" }, { "" }, Item::ACTION);
  		}
  		// the SuperDrastic page (Nintendo DS > SuperDrastic): superdrastic.conf and DraStic's drastic.cfg
@@ -2523,7 +2546,53 @@ index ee1ceffb..345f13ac 100644
  			const char* SD = "SuperDrastic";
  			add(SD, "nds", "Shader", shaderHelp, sd, "DSFLIP_SHADER", shaderNames, shaderValues);
  			add(SD, "nds", "3D resolution", "How sharp DS games' 3D is drawn.", dcfg, "hires_3d", { "1x", "2x" }, { "0", "1" });
-@@ -884,6 +906,7 @@ namespace banana
+@@ -667,24 +696,25 @@ namespace banana
+ 				"/data/retroarch/retroarch.cfg", "video_scale_integer", { "Off", "On" }, { "false", "true" });
+ 			items.back().hints = { "The picture as large as the screen takes.", "Sharp pixels at a whole multiple, black around it." };
+ 		}
+-		// the Emulators page (Other systems > Emulators): a row once some system has two cores to choose from
++		// Emulators: Duo Lite shows every installed system, including a single available core.
+ 		{
+ 			const char* EM = "Emulators";
+ 			const size_t before = items.size();
+-			// each system's emulator, among the cores installed for it (a row once there are two to choose from)
++			// Only installed cores are selectable; downloads appear on the next rebuild.
+ 			coreSig = coreSignature();
+ 			for (const auto& sys : RA_SYSTEMS)
+ 			{
+ 				std::vector<std::string> names, values;
+ 				coreChoices(sys, names, values);
+-				if (names.size() < 2) continue;
++				if (sys.duoliteOnly && board_() != "duolite") continue;
++				if (names.empty() || (names.size() < 2 && board_() != "duolite")) continue;
+ 				const char* help = std::string(sys.id) == "gba"
+ 					? "The emulator for GBA games. gpSP: the fastest. mGBA: the most accurate, and the one RetroAchievements accepts for hardcore. Cores downloaded with RetroArch's Core Downloader (its Online Updater) are listed here too."
+-					: "The emulator (RetroArch core) for this system's games: the first is BananaOS's own. Cores downloaded with RetroArch's Core Downloader (its Online Updater) are listed here too.";
++					: "The installed emulator (RetroArch core) for this system. Compatible cores downloaded with RetroArch's Core Downloader are listed here too. In a game, F + X opens BananaOS's menu; its RetroArch menu opens the core's own options. Arcade games need the ROM set matching the selected core.";
+ 				add(EM, "gamepad", sys.label, help, menu, (std::string("core.") + sys.id).c_str(), names, values);
+ 			}
+ 			if (items.size() > before)
+-				add(O, "gamepad", "Emulators", "Which emulator each system uses, where there is more than one.", "", "ra_cores", {}, {}, Item::PAGE);
++				add(O, "gamepad", "Emulators", "The installed emulator for each system, with a choice where alternatives are installed.", "", "ra_cores", {}, {}, Item::PAGE);
+ 		}
+ 		// L2, R2, L3 and R3 alone in RetroArch's games (the page below; run-retroarch, bananad)
+ 		add(O, "gamepad", "Buttons", "Each system's buttons: what L2, R2, L3 and R3 do, and A/B and X/Y swapped.", "", "ra_buttons", {}, {}, Item::PAGE);
+@@ -853,12 +883,13 @@ namespace banana
+ 		{
+ 			const char* RB = "Other systems buttons";
+ 			for (const auto& sys : RA_SYSTEMS)
+-				add(RB, "gamepad", sys.label, "This system's buttons: what L2, R2, L3 and R3 do alone in its games, and A/B and X/Y swapped or not.",
++				if (!sys.duoliteOnly || board_() == "duolite") add(RB, "gamepad", sys.label, "This system's buttons: what L2, R2, L3 and R3 do alone in its games, and A/B and X/Y swapped or not.",
+ 					"", raButtonsKey(sys).c_str(), {}, {}, Item::PAGE);
+ 			const std::vector<std::string> names = { "Game's own", "Fast-forward", "Save state", "Load state", "Menu", "Pause", "Screenshot", "Nothing" };
+ 			const std::vector<std::string> values = { "game", "ff", "save", "load", "menu", "pause", "screenshot", "none" };
+ 			for (const auto& sys : RA_SYSTEMS)
+ 			{
++				if (sys.duoliteOnly && board_() != "duolite") continue;
+ 				const std::string sec = raButtonsSection(sys), id = sys.id;
+ 				const char* help = "Alone, in this system's games. Game's own: the game's button. Fast-forward: on, and off again (as F + R2). Save and load state: the current slot (as F + R and F + L). Menu: RetroArch's (as F + X). With F held, the button is RetroArch's hotkey.";
+ 				if (id == "gba")
+@@ -884,6 +915,7 @@ namespace banana
  		add(PW, "moon", "Sleep", "Puts the handheld to sleep, as a press of the power button does. Your game pauses. Press A twice.", "", "sleep", { "" }, { "" }, Item::ACTION);
  		add(PW, "gear", "Restart", "Restarts the handheld. Press A twice.", "", "reboot", { "" }, { "" }, Item::ACTION);
  		add(PW, "gear", "Shut down", "Turns the handheld off. Press A twice. (Or hold the power button.)", "", "poweroff", { "" }, { "" }, Item::ACTION);
@@ -2531,7 +2600,7 @@ index ee1ceffb..345f13ac 100644
  		// the Home server page (Network > Home server)
  		const char* HS = "Home server";
  		add(HS, "phone", "Server", "", "", "hs_server", {}, {}, Item::PAGE);
-@@ -928,9 +951,9 @@ namespace banana
+@@ -928,9 +960,9 @@ namespace banana
  			{ "", { "Nintendo DS", "Other systems", "Display & sound", "Network", "Sleep & power", "System" } },	// the tiles
  			{ "Nintendo DS", { "Emulator", "Buttons", "SuperDrastic", "BananaDS", "Quick resume", "DS language", "DS name" } },
  			{ "Other systems", { "Buttons", "Picture & sound", "Quick resume", "Screen", "Second screen", "Emulators", "Frontend", "RetroAchievements", "Reset RetroArch" } },
@@ -2543,7 +2612,7 @@ index ee1ceffb..345f13ac 100644
  			{ "System", { "Updates", "Language", "Time zone", "Box art", "Hotkeys", "About", "Credits", "First-time setup", "Reset system settings", "Reset emulator settings" } },
  			{ "SuperDrastic", { "Shader", "3D resolution", "CPU clock", "Frame pacing", "Threaded 3D", "Microphone", "Low latency (experimental)", "Hotkeys", "Reset buttons", "Reset DraStic" } },
  			{ "BananaDS", { "Shader", "3D resolution", "CPU clock", "Frame pacing", "Timing", "DS CPU speed", "Microphone", "Mic sensitivity", "Edge marking", "Fog", "Low latency (experimental)", "Hotkeys", "Reset BananaDS" } },
-@@ -999,7 +1022,7 @@ namespace banana
+@@ -999,7 +1031,7 @@ namespace banana
  			if (pm <= 0) pm = backlightPair(data + "/backlight", i);
  			if (pm <= 0)
  			{
@@ -2552,7 +2621,7 @@ index ee1ceffb..345f13ac 100644
  				int max = atoi(readLine(b + "/max_brightness").c_str()), cur = atoi(readLine(b + "/brightness").c_str());
  				if (max > 0) pm = cur * 1000 / max;
  			}
-@@ -1047,6 +1070,7 @@ namespace banana
+@@ -1047,6 +1079,7 @@ namespace banana
  		{ const char* tv = getenv("BANANA_VERSION"); version = tv ? tv : readLine("/etc/banana/version"); }	// (the tests: as the update script)
  		slot = readLine("/run/banana/slot");
  		{ const char* tb = getenv("BANANA_BOARD"); board = tb ? tb : readLine("/etc/banana/board"); }
@@ -2560,7 +2629,7 @@ index ee1ceffb..345f13ac 100644
  		std::string model;
  		{
  			std::ifstream f("/proc/device-tree/model");
-@@ -1085,6 +1109,8 @@ namespace banana
+@@ -1085,6 +1118,8 @@ namespace banana
  		}
  		std::ostringstream a;
  		a << "Banana " << (version.empty() ? "dev" : version) << (slot.empty() ? "" : " (slot " + slot + ")") << " on the " << (model.empty() ? "handheld" : model) << ". ";
@@ -2569,7 +2638,7 @@ index ee1ceffb..345f13ac 100644
  		if (battery >= 0) a << "Battery " << battery << "%. ";
  		if (space[0]) a << "Card: " << space << ". ";
  		// the kernel too (#70): its version as uname gives it
-@@ -1129,6 +1155,8 @@ namespace banana
+@@ -1129,6 +1164,8 @@ namespace banana
  
  	void Settings::close()
  	{
@@ -2578,7 +2647,7 @@ index ee1ceffb..345f13ac 100644
  		mOpen = false;
  		page = LIST;
  		wizard = false;
-@@ -1187,14 +1215,14 @@ namespace banana
+@@ -1187,14 +1224,14 @@ namespace banana
  		if (it.kind == Item::BRIGHTNESS)
  		{
  			int pm = atoi(v.c_str()), i = it.key == "bottom" ? 1 : 0;
@@ -2595,7 +2664,7 @@ index ee1ceffb..345f13ac 100644
  				int omax = atoi(readLine(o + "/max_brightness").c_str());
  				other = omax > 0 ? (atoi(readLine(o + "/brightness").c_str()) * 1000 + omax / 2) / omax : pm;
  			}
-@@ -1238,7 +1266,7 @@ namespace banana
+@@ -1238,7 +1275,7 @@ namespace banana
  		}
  		if (it.file == data + "/bananad.conf") poke("bananad");
  		if (it.key == "timezone") { setenv("TZ", v.c_str(), 1); tzset(); poke("bananad"); }	// bananad's logs too
@@ -2604,7 +2673,7 @@ index ee1ceffb..345f13ac 100644
  		if (it.key == "bluetooth")
  		{
  			btEnabled = v == "on";
-@@ -1320,6 +1348,7 @@ namespace banana
+@@ -1320,6 +1357,7 @@ namespace banana
  			if (it.key == "developer") { recordEvent("settings", "Developer options"); openSection("Developer options"); return MOVED; }
  			if (it.key == "scrape") { startScrape(); return MOVED; }
  			if (it.key == "colors") { openColors(); return MOVED; }
@@ -2612,7 +2681,7 @@ index ee1ceffb..345f13ac 100644
  			if (it.key == "speaker_eq_page") { openEq(); return MOVED; }
  			if (it.key == "share_account") { startEntry(ENTRY_SMB_USER, "File sharing", "Name", LIST, shareUser()); return MOVED; }
  			if (it.key == "ds_name") { startEntry(ENTRY_DS_NAME, "The DS's name", "10 characters at most", LIST, dsName()); return MOVED; }
-@@ -1410,7 +1439,7 @@ namespace banana
+@@ -1410,7 +1448,7 @@ namespace banana
  				armed = -1;
  				return resetApply(it.key == "reset_emulator");
  			}
@@ -2621,7 +2690,7 @@ index ee1ceffb..345f13ac 100644
  		}
  		int n = (int)it.values.size();
  		int at = it.at + dir;
-@@ -1465,7 +1494,7 @@ namespace banana
+@@ -1465,7 +1503,7 @@ namespace banana
  			// show when the card has no line), the backlights and the mixer's level
  			static const struct { const char* key; const char* def; } BANANAD[] = {
  				{ "autosleep_minutes", "10" }, { "dim_minutes", "2" }, { "lid_sleep", "yes" },
@@ -2630,7 +2699,7 @@ index ee1ceffb..345f13ac 100644
  			for (const auto& b : BANANAD)
  				setConfValue(data + "/bananad.conf", b.key, getConfValue("/etc/banana/bananad.conf", b.key, b.def));
  			if (DIR* d = opendir("/sys/class/backlight"))
-@@ -1484,7 +1513,7 @@ namespace banana
+@@ -1484,7 +1522,7 @@ namespace banana
  			// the side effects save() runs for keys that live outside settings.conf
  			std::map<std::string, std::string> rs = readSettings(data);
  			if (!rs["timezone"].empty()) { setenv("TZ", rs["timezone"].c_str(), 1); tzset(); }
@@ -2639,7 +2708,7 @@ index ee1ceffb..345f13ac 100644
  			spawn("/usr/libexec/banana/ssh", rs["ssh"] == "on" ? "up" : "down");
  			spawn("/usr/libexec/banana/share", rs["share"] == "on" ? "up" : "down");
  			spawn("/usr/libexec/banana/sd2", "scan");
-@@ -1524,6 +1553,7 @@ namespace banana
+@@ -1524,6 +1562,7 @@ namespace banana
  		if (page == ACHIEVEMENTS) return pressAch(k);
  		if (page == ARTPICK) return pressArt(k);
  		if (page == COLORS) return pressColors(k);
@@ -2647,7 +2716,7 @@ index ee1ceffb..345f13ac 100644
  		if (page == SPEAKEREQ) return pressEq(k);
  		if (page == UPDATES) return pressUpdates(k);
  		if (page == SETUP) return pressSetup(k);
-@@ -1714,6 +1744,14 @@ namespace banana
+@@ -1714,6 +1753,14 @@ namespace banana
  		if (page == ACHIEVEMENTS) return touchAch(cx, cy);
  		if (page == ARTPICK) return touchArt(cx, cy);
  		if (page == COLORS) return touchColors(cx, cy);
@@ -2662,7 +2731,7 @@ index ee1ceffb..345f13ac 100644
  		if (page == SPEAKEREQ) return touchEq(cx, cy);
  		if (page == THEMES) return touchThemes(cx, cy);
  		if (page == CREDITS) { if (downY >= 418 && downY <= 466 && downX < 320) return pressCredits(Key::B); return NONE; }
-@@ -2145,7 +2183,7 @@ namespace banana
+@@ -2145,7 +2192,7 @@ namespace banana
  		else if (!body.empty()) text(fit(body, false, 18, 540), false, 18, 78, 38, lightText);
  	}
  
@@ -2671,7 +2740,7 @@ index ee1ceffb..345f13ac 100644
  	{
  		// ROCKNIXDS's volume indicator (SuperDrastic's ui.c render_volume), in the same place: a pill at the top of the
  		// top panel, a speaker (crossed out at 0) or a sun, the in-game menu's 10-segment bar and the percent
-@@ -2158,7 +2196,8 @@ namespace banana
+@@ -2158,7 +2205,8 @@ namespace banana
  		percent = std::min(100, std::max(0, percent));
  		bool sun = label == "Brightness";
  		const Color light = Color::hex(0xf1ede2), bar = Color::hex(0xffe68a), off = Color::hex(0x3a3540), red = Color::hex(0xff8a96);
@@ -2681,7 +2750,7 @@ index ee1ceffb..345f13ac 100644
  		box("osd", false, x0, y0, w, h);
  		int k = std::max(2, (int)std::lround(2 * s));	// device px per icon pixel
  		const char* const* ic = sun ? SUN : percent <= 0 ? MUTE : VOL;
-@@ -2244,8 +2283,8 @@ namespace banana
+@@ -2244,8 +2292,8 @@ namespace banana
  		const Item& first = items[groupStart(g0)];
  
  		be->beginScreen(0);
@@ -2692,7 +2761,7 @@ index ee1ceffb..345f13ac 100644
  		icon(groupIcon[first.section], 50, 56, 3);
  		text("Settings", true, 17, 170, 62, p.muted, true, 1.4f);
  		text(groups[g0], true, 30, 170, 88, p.ink);
-@@ -2308,7 +2347,8 @@ namespace banana
+@@ -2308,7 +2356,8 @@ namespace banana
  		if (cur.key == "wifi") help = "Wi-Fi: " + wifiInfo + ". Network, below, joins one; networks can also be written in banana/wifi.conf on a computer (see banana/README.txt).";
  		if (cur.key == "ssh")
  			help = "For working on Banana itself: ssh root@" + (ip.empty() ? std::string("<address>") : ip) +
@@ -2702,7 +2771,7 @@ index ee1ceffb..345f13ac 100644
  		if (cur.key == "hs_server")
  		{
  			std::string n = homeServer();
-@@ -2373,7 +2413,7 @@ namespace banana
+@@ -2373,7 +2422,7 @@ namespace banana
  		{
  			st.size = z;
  			size = z;
@@ -2711,7 +2780,7 @@ index ee1ceffb..345f13ac 100644
  			if ((lines - 1) * std::round(z * 1.4f) + z * 1.3f <= bottom - top) return true;
  		}
  		return false;
-@@ -2383,7 +2423,7 @@ namespace banana
+@@ -2383,7 +2432,7 @@ namespace banana
  		float z; int n;
  		bool ok = helpFit(t, top, bottom, z, n);
  		int maxLines = ok ? n : std::max(1, (int)((bottom - top - z * 1.3f) / std::round(z * 1.4f)) + 1);
@@ -2720,7 +2789,7 @@ index ee1ceffb..345f13ac 100644
  	}
  
  	int Settings::helpCheck(const std::function<void(const std::string&)>& log)
-@@ -2446,6 +2486,7 @@ namespace banana
+@@ -2446,6 +2495,7 @@ namespace banana
  		if (page == ACHIEVEMENTS) { renderAch(); return; }
  		if (page == ARTPICK) { renderArt(); return; }
  		if (page == COLORS) { renderColors(); return; }
@@ -2728,7 +2797,7 @@ index ee1ceffb..345f13ac 100644
  		if (page == SPEAKEREQ) { renderEq(); return; }
  		if (page == UPDATES) { renderUpdates(); return; }
  		if (page == SETUP) { renderSetup(); return; }
-@@ -2463,8 +2504,8 @@ namespace banana
+@@ -2463,8 +2513,8 @@ namespace banana
  
  		// ---- top: what the selected setting is ----
  		be->beginScreen(0);
@@ -2739,7 +2808,7 @@ index ee1ceffb..345f13ac 100644
  		// the header (icon, section, name, value) kept tight so the help under it has ten lines (user feedback 2026-10-25: the
  		// Shader row's was cut at seven)
  		icon(cur.icon, 50, HEAD_ICON_Y, 3);
-@@ -2646,6 +2687,7 @@ namespace banana
+@@ -2646,6 +2696,7 @@ namespace banana
  	{
  		now = t;
  		if (!mOpen) return false;
@@ -2747,7 +2816,7 @@ index ee1ceffb..345f13ac 100644
  		bool scrapeChanged = pollScrape(t);
  		scrapeChanged |= pollSync(t);
  		scrapeChanged |= pollPickGames();
-@@ -2811,6 +2853,7 @@ namespace banana
+@@ -2811,6 +2862,7 @@ namespace banana
  
  	int Settings::pageWake(double t) const
  	{
@@ -2755,7 +2824,7 @@ index ee1ceffb..345f13ac 100644
  		if (scanJob.running() || statusJob.running() || artJob.running() || checkJob.running() || volJob.running() || betaJob.running()) return 100;
  		if (btListJob.running() || btScanJob.running() || btActJob.running()) return 100;
  		if (pickLoading) return 150;	// (Choose games: the server's list as it comes)
-@@ -3098,8 +3141,8 @@ namespace banana
+@@ -3098,8 +3150,8 @@ namespace banana
  		SPal p = pal(light);
  		const wifi::Network* cur = nsel < (int)nets.size() ? &nets[nsel] : nullptr;
  		be->beginScreen(0);
@@ -2766,7 +2835,7 @@ index ee1ceffb..345f13ac 100644
  		icon("phone", 50, 56, 3);
  		text("Network", true, 17, 170, 62, p.muted, true, 1.4f);
  		text("Wi-Fi networks", true, 30, 170, 88, p.ink);
-@@ -3317,8 +3360,8 @@ namespace banana
+@@ -3317,8 +3369,8 @@ namespace banana
  		SPal p = pal(light);
  		const bt::Device* cur = bsel < (int)btDevs.size() ? &btDevs[bsel] : nullptr;
  		be->beginScreen(0);
@@ -2777,7 +2846,7 @@ index ee1ceffb..345f13ac 100644
  		icon("phone", 50, 56, 3);
  		text("Network", true, 17, 170, 62, p.muted, true, 1.4f);
  		text("Bluetooth devices", true, 30, 170, 88, p.ink);
-@@ -3377,19 +3420,20 @@ namespace banana
+@@ -3377,19 +3429,20 @@ namespace banana
  	void Settings::renderKeyboard()
  	{
  		SPal p = pal(light);
@@ -2803,7 +2872,7 @@ index ee1ceffb..345f13ac 100644
  			w = text(shown, true, 22, 0, 0, p.ink, false, 0, true);
  			text(shown, true, 22, 70, 165, p.ink);
  		}
-@@ -3412,7 +3456,7 @@ namespace banana
+@@ -3412,7 +3465,7 @@ namespace banana
  			: entry == ENTRY_GAME_NAME || entry == ENTRY_GAME_SORT ? "A types the key, B deletes, X capitals, L symbols, Y a space, START when it is typed. Kept in banana/game-titles.tsv on the card."
  			: entry == ENTRY_ART_SEARCH ? "A types the key, B deletes, X capitals, L symbols, Y a space, START looks. A few words of the name are enough: the closest names come first."
  			: "A types the key, B deletes, X capitals, L symbols, Y a space, START when it is typed. Or tap the keys. Accounts are kept in banana/accounts.conf on the card.";
@@ -2812,7 +2881,7 @@ index ee1ceffb..345f13ac 100644
  		be->endScreen();
  
  		be->beginScreen(1);
-@@ -3493,6 +3537,7 @@ namespace banana
+@@ -3493,6 +3546,7 @@ namespace banana
  		{ const char* tv = getenv("BANANA_VERSION"); version = tv ? tv : readLine("/etc/banana/version"); }
  		slot = readLine(runDir + "/slot");
  		{ const char* tb = getenv("BANANA_BOARD"); board = tb ? tb : readLine("/etc/banana/board"); }
@@ -2820,7 +2889,7 @@ index ee1ceffb..345f13ac 100644
  		listPkgs();
  		readOnline();
  		downloading = false;
-@@ -3657,6 +3702,7 @@ namespace banana
+@@ -3657,6 +3711,7 @@ namespace banana
  
  	bool Settings::betaOn() const
  	{
@@ -2828,7 +2897,7 @@ index ee1ceffb..345f13ac 100644
  		// the password kept (.beta) and the channel not turned off since (.channel says "github" then: the password stays)
  		return betaKept() && readLine(updatesDir + "/.channel") != "github";
  	}
-@@ -3689,6 +3735,11 @@ namespace banana
+@@ -3689,6 +3744,11 @@ namespace banana
  
  	Settings::Result Settings::pressBeta()
  	{
@@ -2840,7 +2909,7 @@ index ee1ceffb..345f13ac 100644
  		if (betaJob.running() || downloading || checkJob.running()) return NONE;
  		if (!betaOn())
  		{
-@@ -3984,9 +4035,9 @@ namespace banana
+@@ -3984,9 +4044,9 @@ namespace banana
  		// the top screen: the pattern, its name on a strip at the top
  		be->beginScreen(0);
  		colorsPattern(0, 0, 480);
@@ -2852,7 +2921,7 @@ index ee1ceffb..345f13ac 100644
  		std::string hint = !message.empty() ? message : "Make the screen you correct look like the other one. X: no correction.";
  		text(fit(hint, true, 14, 616), true, 14, 12, 457, Color::hex(0xd0d0d0));
  		be->endScreen();
-@@ -4019,6 +4070,50 @@ namespace banana
+@@ -4019,6 +4079,50 @@ namespace banana
  		be->endScreen();
  	}
  
@@ -2903,7 +2972,7 @@ index ee1ceffb..345f13ac 100644
  	// ---- Speaker EQ ------------------------------------------------------------------------------------------------
  	// Display & sound > Speaker EQ: on or off, the profile, and seven sliders that adjust it. Each slider shows the
  	// curve's level at its frequency, the profile's to begin with (Tuned's 1 kHz starts at -10 dB), and a step moves
-@@ -4163,7 +4258,7 @@ namespace banana
+@@ -4163,7 +4267,7 @@ namespace banana
  
  		// the top screen: the curve the speakers play through now, 100 Hz to 20 kHz, -20 to +20 dB
  		be->beginScreen(0);
@@ -2912,7 +2981,7 @@ index ee1ceffb..345f13ac 100644
  		text("Speaker EQ", true, 20, 24, 18, p.ink, true, 1.2f);
  		std::string state = eqEdit.on ? profileName : "Off";
  		float sw = text(state, true, 18, 0, 0, p.accent, false, 0, true);
-@@ -4307,8 +4402,8 @@ namespace banana
+@@ -4307,8 +4411,8 @@ namespace banana
  		SPal p = pal(light);
  		bool busy = artJob.running();
  		be->beginScreen(0);
@@ -2923,7 +2992,7 @@ index ee1ceffb..345f13ac 100644
  		icon("picture", 50, 56, 3);
  		text("Box art for", true, 17, 170, 62, p.muted, true, 1.4f);
  		{ AsNamed named(*this); text(fit(pgTitle, true, 30, 420), true, 30, 170, 88, p.ink); }
-@@ -4380,7 +4475,7 @@ namespace banana
+@@ -4380,7 +4484,7 @@ namespace banana
  			return MOVED;
  		}
  		case Key::X:
@@ -2932,7 +3001,7 @@ index ee1ceffb..345f13ac 100644
  			{
  				// X, X: the kept beta password forgotten (the channel off; A asks for it again)
  				if (armed != 3001) { armed = 3001; return MOVED; }
-@@ -4438,8 +4533,8 @@ namespace banana
+@@ -4438,8 +4542,8 @@ namespace banana
  		const std::string handheld = bd == "rgds-plus" ? "RG DS Plus" : bd == "rgds" ? "RG DS" : "handheld";
  		auto mb = [](long long b) { return std::to_string((b + 524288) / 1048576); };
  		be->beginScreen(0);
@@ -2943,7 +3012,7 @@ index ee1ceffb..345f13ac 100644
  		icon("gear", 50, 56, 3);
  		text("System", true, 17, 170, 62, p.muted, true, 1.4f);
  		text("Update", true, 30, 170, 88, p.ink);
-@@ -4482,7 +4577,8 @@ namespace banana
+@@ -4482,7 +4586,8 @@ namespace banana
  		}
  		else if (usel == 1)
  		{
@@ -2953,7 +3022,7 @@ index ee1ceffb..345f13ac 100644
  			else if (!message.empty()) help = message;
  			else if (betaOn()) help = "Two channels: GitHub's releases, or the beta testers' builds on bananaos-cfw.dev. On: the beta builds. A, then A again, turns it off (GitHub again); the password is kept for turning it back on. X twice forgets the password.";
  			else if (betaKept()) help = "Two channels: GitHub's releases (now), or the beta testers' builds on bananaos-cfw.dev. A turns the beta channel on again with the password kept on the card; X twice forgets the password.";
-@@ -4528,6 +4624,7 @@ namespace banana
+@@ -4528,6 +4633,7 @@ namespace banana
  				name = "Beta channel";
  				hot = armed == 3000 || betaJob.running();
  				tag = betaJob.running() ? "Checking..." : armed == 3000 ? "Press A again" : armed == 3001 ? "Press X again: forget" : betaOn() ? "On" : betaKept() ? "Off (password kept)" : "Off";
@@ -2961,7 +3030,7 @@ index ee1ceffb..345f13ac 100644
  			}
  			else
  			{
-@@ -4544,6 +4641,7 @@ namespace banana
+@@ -4544,6 +4650,7 @@ namespace banana
  		float bw = faceWidth("B", "Back");
  		if (!applying) face("B", "Back", 18, bw);
  		std::string act = updated ? "Restart" : applying ? "" : usel == 0 ? oact
@@ -2969,7 +3038,7 @@ index ee1ceffb..345f13ac 100644
  			: usel == 1 ? (betaJob.running() ? "" : !betaOn() ? "Turn on" : armed == 3000 ? "Confirm" : "Turn off")
  			: armed == 1000 + usel - 2 ? "Confirm" : "Update";
  		if (!act.empty())
-@@ -4634,8 +4732,8 @@ namespace banana
+@@ -4634,8 +4741,8 @@ namespace banana
  		const int VIS = 8;
  		const std::string ver = readLine("/etc/banana/version");
  		be->beginScreen(0);
@@ -2980,7 +3049,7 @@ index ee1ceffb..345f13ac 100644
  		icon("gear", 50, 56, 3);
  		text("Credits", true, 17, 170, 62, p.muted, true, 1.4f);
  		text(fit("BananaOS " + (ver.empty() ? std::string("dev") : ver), true, 30, 420), true, 30, 170, 88, p.ink);
-@@ -4808,8 +4906,8 @@ namespace banana
+@@ -4808,8 +4915,8 @@ namespace banana
  		long long chosenBytes = 0; int chosenN = 0;
  		for (auto& g : pickGames) if (g.on) { chosenBytes += g.bytes; chosenN++; }
  		be->beginScreen(0);
@@ -2991,7 +3060,7 @@ index ee1ceffb..345f13ac 100644
  		icon("phone", 50, 56, 3);
  		text("Home server", true, 17, 170, 62, p.muted, true, 1.4f);
  		text("Choose games", true, 30, 170, 88, p.ink);
-@@ -5009,8 +5107,8 @@ namespace banana
+@@ -5009,8 +5116,8 @@ namespace banana
  		for (auto& it : items) if (it.key == "theme") cur = it.at;
  		const std::string& v = thValues.empty() ? std::string() : thValues[thSel];
  		be->beginScreen(0);
@@ -3002,7 +3071,7 @@ index ee1ceffb..345f13ac 100644
  		icon("picture", 50, 56, 3);
  		text("Theme", true, 17, 170, 62, p.muted, true, 1.4f);
  		if (!thNames.empty()) text(fit(thNames[thSel], true, 30, 420), true, 30, 170, 88, p.ink);
-@@ -5137,8 +5235,8 @@ namespace banana
+@@ -5137,8 +5244,8 @@ namespace banana
  		};
  
  		be->beginScreen(0);
@@ -3013,7 +3082,7 @@ index ee1ceffb..345f13ac 100644
  		icon("gear", 50, 56, 3);
  		text("Language", true, 17, 170, 62, p.muted, true, 1.4f);
  		raw(fit(L.name, true, 30, 420), true, 30, 170, 88, p.ink);
-@@ -5223,8 +5321,8 @@ namespace banana
+@@ -5223,8 +5330,8 @@ namespace banana
  		const std::string Q = "Change the menu's language?", N = "No, keep it", Y = "Yes, change it";
  
  		be->beginScreen(0);
@@ -3024,7 +3093,7 @@ index ee1ceffb..345f13ac 100644
  		centred(here(Q), true, 26, 120, p.ink);
  		centred(there(Q), true, 26, 168, p.ink);
  		centred(fromName + "  >  " + toName, true, 24, 250, p.accent);
-@@ -5307,8 +5405,8 @@ namespace banana
+@@ -5307,8 +5414,8 @@ namespace banana
  	{
  		SPal p = pal(light);
  		be->beginScreen(0);
@@ -3035,7 +3104,7 @@ index ee1ceffb..345f13ac 100644
  		icon("nds", 50, 56, 3);
  		text(hotAsk == 2 ? "This game's 3D resolution" : "3D resolution", true, 17, 170, 62, p.muted, true, 1.4f);
  		text("4x runs hot", true, 30, 170, 88, p.ink);
-@@ -5344,7 +5442,7 @@ namespace banana
+@@ -5344,7 +5451,7 @@ namespace banana
  		};
  
  		be->beginScreen(0);
@@ -3044,7 +3113,7 @@ index ee1ceffb..345f13ac 100644
  		centred(title, true, 30, 196, p.ink);
  		centred(applying ? "Don't turn the handheld off" : ver, true, 20, 244, p.muted);
  		be->endScreen();
-@@ -5858,8 +5956,8 @@ namespace banana
+@@ -5858,8 +5965,8 @@ namespace banana
  			: std::string(pgArtDone ? "Fetched" : "Find it by name"); };
  
  		be->beginScreen(0);
@@ -3055,7 +3124,7 @@ index ee1ceffb..345f13ac 100644
  		icon(pgNds ? "nds" : "gamepad", 50, HEAD_ICON_Y, 3);
  		text(row == PG_EMU ? "This game's emulator" : row == PG_SHADER ? "This game's shader" : row == PG_3D ? "This game's 3D" : row == PG_RES ? "This game's 3D resolution" : row == PG_MIC ? "This game's microphone" : row == PG_TIMING ? "This game's timing" : row == PG_CPU ? "This game's DS CPU speed" : row == PG_NAME ? "This game's name" : row == PG_SORT ? "This game's sort title" : row == PG_DELETE ? "Delete this game" : row == PG_ACH ? "This game's achievements" : "This game's box art",
  			true, 17, 170, HEAD_SECTION_Y, p.muted, true, 1.4f);
-@@ -6660,8 +6758,8 @@ namespace banana
+@@ -6660,8 +6767,8 @@ namespace banana
  
  		// ---- top panel: the step, its title and state, what it is for, the result ----
  		be->beginScreen(0);
@@ -3066,7 +3135,7 @@ index ee1ceffb..345f13ac 100644
  		icon(icons[sl], 50, 52, 3);
  		std::string stepLine = lang::tr("First-time setup") + "  \xc2\xb7  " + lang::tr("Step {n} of {m}");
  		for (auto [k, v] : { std::pair<std::string, std::string>{ "{n}", std::to_string(wsel + 1) }, { "{m}", std::to_string(nSteps) } })
-@@ -6791,7 +6889,7 @@ namespace banana
+@@ -6791,7 +6898,7 @@ namespace banana
  	{
  		SPal p = pal(light);
  		be->beginScreen(0);

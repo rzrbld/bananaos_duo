@@ -1,0 +1,45 @@
+#!/bin/sh
+# Sourced by the OS launcher. Only temporary append config is written; neither
+# downloaded cores nor the user's RetroArch configuration is changed.
+duolite_ra_controls() {
+    controls_cfg=$1 controls_commands=$2 controls_system=$3
+    controls_card=$4 controls_defaults=$5
+    rm -f "$controls_commands"
+    [ -n "$controls_system" ] || return 0
+    controls_setting() {
+        controls_value=$(awk -v key="$1" '
+            /^[[:space:]]*#/ { next }
+            index($0,"=") { k=substr($0,1,index($0,"=")-1); gsub(/^[ \t]+|[ \t]+$/, "", k);
+                if(k==key) { v=substr($0,index($0,"=")+1); gsub(/^[ \t]+|[ \t]+$/, "", v) } }
+            END { print v }' "$controls_card" 2>/dev/null) || :
+        if [ -z "$controls_value" ]; then
+            controls_value=$(awk -v key="$1" '
+                /^[[:space:]]*#/ { next }
+                index($0,"=") { k=substr($0,1,index($0,"=")-1); gsub(/^[ \t]+|[ \t]+$/, "", k);
+                    if(k==key) { v=substr($0,index($0,"=")+1); gsub(/^[ \t]+|[ \t]+$/, "", v) } }
+                END { print v }' "$controls_defaults" 2>/dev/null) || :
+        fi
+        printf '%s' "$controls_value"
+    }
+    controls_unused=30
+    for controls_button in l2 r2 l3 r3; do
+        case $(controls_setting "ra_btn_$controls_button.$controls_system") in
+            ff) controls_command=FAST_FORWARD ;; save) controls_command=SAVE_STATE ;;
+            load) controls_command=LOAD_STATE ;; menu) controls_command=MENU_TOGGLE ;;
+            pause) controls_command=PAUSE_TOGGLE ;; screenshot) controls_command=SCREENSHOT ;;
+            none|companion) controls_command=- ;; *) controls_command= ;;
+        esac
+        if [ -n "$controls_command" ]; then
+            printf '%s %s\n' "$controls_button" "$controls_command" >> "$controls_commands"
+            # Bind both forms to absent inputs: SDL exposes the triggers as
+            # axes, while stick clicks are buttons. "nul" alone autoconfigures.
+            printf 'input_player1_%s_btn = "%s"\ninput_player1_%s_axis = "+%s"\n' \
+                "$controls_button" "$controls_unused" "$controls_button" "$controls_unused" >> "$controls_cfg"
+        fi
+        controls_unused=$((controls_unused + 1))
+    done
+    if [ "$(controls_setting "ra_swap_ab.$controls_system")" = on ]; then
+        # SDL canonical IDs: the default profile has A=0 B=1 X=2 Y=3.
+        printf 'input_player1_a_btn = "1"\ninput_player1_b_btn = "0"\ninput_player1_x_btn = "3"\ninput_player1_y_btn = "2"\n' >> "$controls_cfg"
+    fi
+}

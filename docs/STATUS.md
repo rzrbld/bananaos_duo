@@ -23,6 +23,8 @@ BananaDS runs with the Cortex-A73 target, JIT, Gengis and Banana 2D, including s
 
 The added Master System, CPC, MAME, PSP, Dreamcast, Wii and 3DS cores each rendered an authorized test game and passed original-menu pause/resume/quit checks. PSP save/load and 3DS D-pad movement were checked too. Installed-firmware PSP launch/menu checks passed after reboot. Tests used homebrew/freeware and temporary save paths; no test games are in release images.
 
+Alpha34 adds all seven systems to **Settings → Other systems → Buttons** and **Emulators**. Emulators lists installed cores even when only one is available; compatible downloaded alternatives appear automatically. Buttons assigns L2/R2/L3/R3 actions and swaps A/B and X/Y per system. The native Duo launcher applies these through temporary append configuration, including SDL trigger-axis suppression; user RetroArch files are retained. Detailed core-specific options remain in RetroArch's in-game menu. Automated settings coverage and control-helper checks pass; installed-firmware testing is pending the CI build.
+
 **3DS:** Citra currently combines both emulated screens on the upper panel. Native split-panel and touchscreen integration are not implemented. Decrypted dumps and homebrew are supported by the loader; CIA installation is not implemented.
 
 **Wii:** Dolphin uses Wiimote gamepad mapping and right-stick infrared pointing. Homebrew rendering was checked; commercial-game performance, motion-dependent games and controller extensions need testing.

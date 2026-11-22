@@ -21,6 +21,9 @@ if [ -n "${BANANA_RA_OUT:-}" ] && [ -p "$BANANA_RA_OUT" ]; then exec 4>"$BANANA_
 printf 'stdin_cmd_enable = "true"\n' > "$CFG"
 PROFILE="/usr/share/banana/duolite/cores/${CORE##*/}.cfg"
 [ ! -f "$PROFILE" ] || cat "$PROFILE" >> "$CFG"
+. /usr/libexec/banana/retroarch-controls-duolite
+duolite_ra_controls "$CFG" /run/banana/ra-buttons "${BANANA_SYSTEM:-}" \
+    /data/banana/settings.conf /etc/banana/settings.conf
 if [ -f /run/banana/resume-once ] && [ "$(cat /run/banana/resume-once)" = "${BANANA_ROM:-$ROM}" ]; then
     printf 'savestate_auto_load = "true"\nstate_slot = "-1"\n' >> "$CFG"
     rm -f /run/banana/resume-once
@@ -34,5 +37,5 @@ wait "$P"; result=$?
 while kill -0 "$P" 2>/dev/null; do wait "$P"; result=$?; done
 exec 3>&- 4>&-
 [ "$LEASED" = 1 ] || rm -f "$FIFO"
-rm -f "$CFG"
+rm -f "$CFG" /run/banana/ra-buttons
 exit "$result"
