@@ -14,13 +14,13 @@ class Hardware(unittest.TestCase):
         cls.binary = Path(cls.build.name) / 'hardware'
         subprocess.run(['cc', '-O1', '-g', '-Wall', '-Wextra', '-Wno-unused-parameter',
                         str(HERE / 'duolite-hardware.c'), '-Wl,--wrap=fopen',
-                        '-Wl,--wrap=open', '-Wl,--wrap=opendir', '-o', str(cls.binary)], check=True)
+                        '-Wl,--wrap=open', '-Wl,--wrap=opendir', '-Wl,--wrap=access', '-o', str(cls.binary)], check=True)
 
     @classmethod
     def tearDownClass(cls):
         cls.build.cleanup()
 
-    def run_case(self, mode, plugged, status, level=128, profile='auto', floor=True, percent=47):
+    def run_case(self, mode, plugged, status, level=128, profile='auto', floor=True, percent=47, rumble=None):
         with tempfile.TemporaryDirectory(prefix='banana-sysfs-') as tmp:
             root = Path(tmp)
             def put(path, value):
@@ -46,7 +46,14 @@ class Hardware(unittest.TestCase):
             put('class/hwmon/hwmon23/pwm1', 140)
             if floor:
                 put('class/hwmon/hwmon23/pwm1_floor', 0)
-            subprocess.run([str(self.binary), tmp, mode, str(level), profile, str(percent)], check=True)
+            put('bus/i2c/drivers/aw86927-haptics/0-005a/rumble_enabled', 'unchanged')
+            put('bus/i2c/drivers/other-haptic/1-005a/rumble_enabled', 'unchanged')
+            args = [str(self.binary), tmp, mode, str(level), profile, str(percent)]
+            if rumble is not None:
+                conf = root / 'rumble.conf'
+                conf.write_text('rumble = ' + rumble + '\n')
+                args.append(str(conf))
+            subprocess.run(args, check=True)
             def get(path):
                 return (root / 'sys' / path).read_text()
             self.assertEqual(get('class/leds/input10:rgb:indicator/brightness'), 'unchanged')
@@ -56,7 +63,10 @@ class Hardware(unittest.TestCase):
             if floor:
                 self.assertEqual(get('class/hwmon/hwmon23/pwm1_floor'),
                                  {'auto':'0','low':'32','medium':'36','high':'40'}.get(profile,'0'))
-            return {key: get(led + key) for key in ['brightness', 'trigger', 'multi_intensity']}
+            result = {key: get(led + key) for key in ['brightness', 'trigger', 'multi_intensity']}
+            result['rumble'] = get('bus/i2c/drivers/aw86927-haptics/0-005a/rumble_enabled')
+            self.assertEqual(get('bus/i2c/drivers/other-haptic/1-005a/rumble_enabled'), 'unchanged')
+            return result
 
     def test_charging_only(self):
         self.assertEqual(self.run_case('charging', False, 'Discharging')['brightness'], '0')
@@ -83,6 +93,10 @@ class Hardware(unittest.TestCase):
             light = self.run_case('battery', False, 'Discharging', profile=profile)
             self.assertEqual(light['multi_intensity'], '0 255 0')
         self.run_case('charging', False, 'Discharging', profile='low', floor=False)
+
+    def test_global_rumble_setting(self):
+        for value, expected in [('yes', '1'), ('no', '0'), ('on', '1'), ('off', '0')]:
+            self.assertEqual(self.run_case('charging', False, 'Discharging', rumble=value)['rumble'], expected)
 
 if __name__ == '__main__':
     unittest.main()

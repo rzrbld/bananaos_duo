@@ -1,0 +1,127 @@
+Subject: BananaDS: route DS Rumble Pak callbacks through OS force feedback
+
+Attach a virtual Rumble Pak on the Duo Lite when its gamepad exposes FF_RUMBLE.
+Use bounded kernel effects, close-owned cleanup and the OS motor gate. Keep
+other handhelds unchanged and allow input.rumble_pak=false for game overrides.
+
+--- a/bananads/src/platform.cpp
++++ b/bananads/src/platform.cpp
+@@ -3,6 +3,10 @@
+ #include "Platform.h"
+ 
+ #include <sys/stat.h>
++#include <sys/ioctl.h>
++#include <linux/input.h>
++#include <dirent.h>
++#include <fcntl.h>
+ #include <dlfcn.h>
+ #include <semaphore.h>
+ #include <unistd.h>
+@@ -25,6 +29,69 @@
+ #endif
+ 
+ namespace bananads {
++// The DS Rumble Pak uses the OS gamepad's standard force-feedback interface.
++// Its bounded effects are stopped by the kernel on timeout or descriptor close.
++class NativeRumble {
++    int fd_ = -1;
++    ff_effect effect_{};
++    std::chrono::steady_clock::time_point next_probe_{};
++public:
++    ~NativeRumble() { disconnect(); }
++    void disconnect() {
++        if (fd_ >= 0) { stop(); ::close(fd_); }
++        fd_ = -1; effect_.id = -1;
++    }
++    bool available() {
++        if (fd_ >= 0) return true;
++        auto now = std::chrono::steady_clock::now();
++        if (now < next_probe_) return false;
++        next_probe_ = now + std::chrono::seconds(1);
++        DIR* dir = ::opendir("/sys/class/input");
++        if (!dir) return false;
++        while (dirent* ent = ::readdir(dir)) {
++            if (std::strncmp(ent->d_name, "event", 5)) continue;
++            char path[512], name[128] = {};
++            std::snprintf(path, sizeof path, "/sys/class/input/%s/device/name", ent->d_name);
++            FILE* f = std::fopen(path, "r");
++            if (!f) continue;
++            bool read = std::fgets(name, sizeof name, f) != nullptr;
++            std::fclose(f);
++            if (!read) continue;
++            name[std::strcspn(name, "\r\n")] = 0;
++            if (std::strcmp(name, "Retroid Pocket Duo Lite Gamepad")) continue;
++            std::snprintf(path, sizeof path, "/dev/input/%s", ent->d_name);
++            int candidate = ::open(path, O_RDWR | O_CLOEXEC | O_NONBLOCK);
++            if (candidate < 0) continue;
++            constexpr unsigned bits = 8 * sizeof(unsigned long);
++            unsigned long caps[(FF_CNT + bits - 1) / bits] = {};
++            if (::ioctl(candidate, EVIOCGBIT(EV_FF, sizeof caps), caps) == 0 &&
++                (caps[FF_RUMBLE / bits] & (1UL << (FF_RUMBLE % bits)))) {
++                fd_ = candidate; effect_ = {}; effect_.type = FF_RUMBLE; effect_.id = -1;
++                break;
++            }
++            ::close(candidate);
++        }
++        ::closedir(dir);
++        return fd_ >= 0;
++    }
++    void start(unsigned duration) {
++        if (!available()) return;
++        effect_.replay.length = std::clamp(duration, 1u, 1000u);
++        effect_.u.rumble.strong_magnitude = 0x8000;
++        effect_.u.rumble.weak_magnitude = 0x8000;
++        if (::ioctl(fd_, EVIOCSFF, &effect_) < 0) { disconnect(); return; }
++        input_event event{}; event.type = EV_FF; event.code = effect_.id; event.value = 1;
++        if (::write(fd_, &event, sizeof event) != sizeof event) disconnect();
++    }
++    void stop() {
++        if (fd_ < 0 || effect_.id < 0) return;
++        input_event event{}; event.type = EV_FF; event.code = effect_.id; event.value = 0;
++        (void)::write(fd_, &event, sizeof event);
++    }
++};
++static NativeRumble& native_rumble() { static NativeRumble rumble; return rumble; }
++bool rumble_available() { return native_rumble().available(); }
++
+ FILE* g_log = nullptr;  // main.cpp opens it (log.file); stderr too
+ int g_log_level = 1;    // 0 debug .. 3 error
+ bool g_log_time = false;  // log.time: each line after the clock since boot (CLOCK_BOOTTIME, /proc/uptime's)
+@@ -298,8 +365,8 @@
+ // --- GBA-slot add-ons ---
+ 
+ bool Addon_KeyDown(KeyType, void*) { return false; }
+-void Addon_RumbleStart(u32, void*) {}
+-void Addon_RumbleStop(void*) {}
++void Addon_RumbleStart(u32 length, void*) { bananads::native_rumble().start(length); }
++void Addon_RumbleStop(void*) { bananads::native_rumble().stop(); }
+ float Addon_MotionQuery(MotionQueryType type, void*) {
+     return type == MotionAccelerationZ ? 9.80665f : 0.0f;  // lying flat, still
+ }
+--- a/bananads/src/emu.cpp
++++ b/bananads/src/emu.cpp
+@@ -35,6 +35,7 @@
+ #endif
+ #include "NDS.h"
+ #include "NDSCart.h"
++#include "GBACart.h"
+ #include "Net.h"
+ #include "Net_Slirp.h"
+ #include "Platform.h"
+@@ -51,6 +52,7 @@
+ using Platform::LogLevel;
+ 
+ namespace bananads {
++bool rumble_available();
+ 
+ int g_emu_core = -1;
+ int g_emu_share = 0;
+@@ -1102,6 +1104,8 @@
+         dsi_cart_ = nullptr;
+     }
+     else nds_ = std::make_unique<NDS>(std::move(args), this);
++    if (!dsi_ && cfg_.flag("input.rumble_pak", true) && rumble_available())
++        nds_->SetGBACart(GBACart::LoadAddon(GBAAddon_RumblePak, this));
+     start_mark("NDS created");
+     nds_->SetNDSCart(std::move(cart));
+     start_mark("cart in");

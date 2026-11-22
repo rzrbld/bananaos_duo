@@ -80,6 +80,7 @@ assert b'banana,quiet-max-pwm' in dtb
 assert b'banana,emergency-cooling-state' in dtb
 assert b'VA DMIC2' in dtb and b'VA_MCLK' in dtb and b'MIC BIAS1' in dtb
 assert b'aux-devs' in dtb
+assert b'banana,haptics' in dtb
 assert b'TX SWR_INPUT2' in dtb and b'qcom,tx-channel-mapping' in dtb
 openabl = source/'buildroot/board/duolite/openabl'
 origin = json.loads((openabl.parent/'openabl-source.json').read_text())
@@ -102,6 +103,7 @@ def cat(name):
 assert cat('etc/banana/board').strip() == b'duolite'
 assert cat('etc/banana/release') == (source/'buildroot/board/duolite/RELEASE').read_bytes()
 assert b'Microphone test' in cat('usr/bin/banana-ui')
+assert b'Game vibration for emulators and compatible ports.' in cat('usr/bin/banana-ui')
 for rel in ['usr/libexec/banana/duolite-audio', 'usr/libexec/banana/volume-duolite']:
     assert cat(rel) == (source/'system/rootfs'/rel).read_bytes(), rel
 for name in ['RetroidPocketDuoLite.conf', 'HiFi-RetroidPocketDuoLite.conf']:

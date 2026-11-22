@@ -1290,7 +1290,7 @@
 		#sound-dai-cells = <0>;
 	};
 
-	haptics@5a {
+	haptics: haptics@5a {
 		compatible = "awinic,aw86927";
 		reg = <0x5a>;
 		interrupts-extended = <&tlmm 36 IRQ_TYPE_EDGE_FALLING>;
@@ -1677,6 +1677,7 @@
 			compatible = "gamepad,rsinput";
 
 			gamepad-name = "Retroid Pocket Duo Lite Gamepad";
+			banana,haptics = <&haptics>;
 			gamepad-bus = <0x0003>;
 			gamepad-vid = <0x2f24>;
 			gamepad-pid = <0x0001>;

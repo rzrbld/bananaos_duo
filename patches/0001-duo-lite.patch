@@ -540,29 +540,31 @@ index 3bfcd2cc..04d85eac 100644
  			if (!(pfds[i].revents & POLLIN)) continue;
  			in.read(fds[i], [&](const InputEvent &ev) {
 diff --git a/system/bananad/bananad.c b/system/bananad/bananad.c
-index 05ef55a4..46dd102c 100644
+index 05ef55a4..8c9a287c 100644
 --- a/system/bananad/bananad.c
 +++ b/system/bananad/bananad.c
-@@ -81,6 +81,9 @@ static struct {
+@@ -81,6 +81,10 @@ static struct {
  	int recorder;			/* the flight recorder (Developer options): everything bananad sees, written to banana/logs/sessions */
  } cfg = { "auto", 5, 8, 10, 1, 2000, 3, "deep", 128, 20, 5, 1, 4, 5, 2, 30, 12, 0, 0 };
  
 +static int duolite;
 +static char led_mode[16] = "charging";
 +static char fan_profile[16] = "auto";
++static int rumble_enabled = 1, rumble_applied;
  static int devfd[MAXDEV], ndev;
  static void leds_update(void);
  static void audio_route(void);
-@@ -149,6 +152,8 @@ static void load_conf(const char *path)
+@@ -149,6 +153,9 @@ static void load_conf(const char *path)
  		else if (!strcmp(k, "power_long_ms")) cfg.power_long_ms = atoi(v);
  		else if (!strcmp(k, "battery_shutdown_percent")) cfg.battery_off_pct = atoi(v);
  		else if (!strcmp(k, "mem_sleep")) snprintf(cfg.mem_sleep, sizeof cfg.mem_sleep, "%s", v);
++		else if (!strcmp(k, "rumble")) rumble_enabled = !strcmp(v, "yes") || !strcmp(v, "on") || !strcmp(v, "1");
 +		else if (!strcmp(k, "fan_profile")) snprintf(fan_profile, sizeof fan_profile, "%s", v);
 +		else if (!strcmp(k, "led_mode")) snprintf(led_mode, sizeof led_mode, "%s", v);
  		else if (!strcmp(k, "led_brightness")) cfg.led_brightness = atoi(v);
  		else if (!strcmp(k, "led_low_percent")) cfg.led_low = atoi(v);
  		else if (!strcmp(k, "led_critical_percent")) cfg.led_critical = atoi(v);
-@@ -210,6 +215,30 @@ static void read_str(const char *path, char *out, size_t n)
+@@ -210,6 +217,50 @@ static void read_str(const char *path, char *out, size_t n)
  	fclose(f);
  }
  
@@ -590,10 +592,30 @@ index 05ef55a4..46dd102c 100644
 +	closedir(d);
 +}
 +
++/* The motor's gate covers both the gamepad FF bridge and direct haptic clients. */
++static void rumble_apply(void)
++{
++	if (!duolite) { rumble_applied = 1; return; }
++	DIR *d = opendir("/sys/bus/i2c/drivers/aw86927-haptics");
++	if (!d) return;
++	struct dirent *e;
++	while ((e = readdir(d))) {
++		char path[320];
++		if (e->d_name[0] == '.') continue;
++		snprintf(path, sizeof path, "/sys/bus/i2c/drivers/aw86927-haptics/%s/rumble_enabled", e->d_name);
++		if (access(path, W_OK) != 0) continue;
++		if (!write_file(path, rumble_enabled ? "1" : "0")) {
++			rumble_applied = 1;
++			say("rumble: %s", rumble_enabled ? "on" : "off");
++		}
++	}
++	closedir(d);
++}
++
  /* fork + exec, no shell; waits */
  static int run(char *const argv[])
  {
-@@ -328,17 +357,19 @@ static void read_lid(void)
+@@ -328,17 +379,19 @@ static void read_lid(void)
  }
  
  /* the headphone jack's state as the kernel has it (the codec's jack is an input device with a switch) */
@@ -615,7 +637,7 @@ index 05ef55a4..46dd102c 100644
  static void drain_inputs(void)
  {
  	struct input_event ev[64];
-@@ -640,6 +671,7 @@ static int battery_capacity(void)
+@@ -640,6 +693,7 @@ static int battery_capacity(void)
  	int r = -1;
  	while (r < 0 && (e = readdir(d))) {
  		if (e->d_name[0] == '.') continue;
@@ -623,7 +645,7 @@ index 05ef55a4..46dd102c 100644
  		char p[320], t[32];
  		snprintf(p, sizeof p, "/sys/class/power_supply/%s/type", e->d_name);
  		read_str(p, t, sizeof t);
-@@ -1105,12 +1137,13 @@ static void audio_find_cards(void)
+@@ -1105,12 +1159,13 @@ static void audio_find_cards(void)
  		int n;
  		if (sscanf(ln, " %d [", &n) != 1) continue;
  		for (char *c = ln; *c; c++) *c = (char)tolower((unsigned char)*c);
@@ -639,7 +661,7 @@ index 05ef55a4..46dd102c 100644
  		FILE *g = fopen("/proc/asound/cards", "r");
  		char ln[256];
  		int n;
-@@ -1127,10 +1160,18 @@ static void audio_route(void)
+@@ -1127,10 +1182,18 @@ static void audio_route(void)
  	 * only the jack), so a game plays on at its pace, through a real device's clock, and nothing comes out loud */
  	int hold = !bt && access(BT_AUDIO_DIR "/hold", F_OK) == 0;
  	card_play = card_speaker >= 0 && !headphones && !hold ? card_speaker : card_codec;
@@ -659,7 +681,7 @@ index 05ef55a4..46dd102c 100644
  		char c[16];
  		snprintf(c, sizeof c, "%d", card_codec);
  		char *argv[] = { "amixer", "-q", "-c", c, "cset", "name=Internal Speakers Switch", headphones || hold ? "off" : "on", NULL };
-@@ -1157,16 +1198,19 @@ static void audio_route(void)
+@@ -1157,16 +1220,19 @@ static void audio_route(void)
  	 * path in the config, so a program with its own libasound (a port's, whose plugin folder may be elsewhere) finds
  	 * it too instead of failing to open the speakers. */
  	static const char eq_lib[] = "/usr/lib/alsa-lib/libasound_module_pcm_banana_eq.so";
@@ -682,7 +704,7 @@ index 05ef55a4..46dd102c 100644
  	else
  		snprintf(play, sizeof play, "\"null\"");
  	if (card_codec >= 0)
-@@ -1174,7 +1218,7 @@ static void audio_route(void)
+@@ -1174,7 +1240,7 @@ static void audio_route(void)
  		 * where the microphone is, as it is. The plug's own way is the two channels' average: half the level when the
  		 * right one is silent, and nothing at all when it is the left one's mirror, as a differential input's can
  		 * be: "the game only hears me when I shout", #14) */
@@ -691,7 +713,7 @@ index 05ef55a4..46dd102c 100644
  	else
  		snprintf(cap, sizeof cap, "\"null\"");
  	const char *where = bt ? "Bluetooth headphones" : hold ? "nowhere: Bluetooth headphones being called back"
-@@ -1203,7 +1247,7 @@ static void audio_route(void)
+@@ -1203,7 +1269,7 @@ static void audio_route(void)
  	f = fopen("/run/banana/mixer.new", "w");
  	if (f) {
  		if (bt) fprintf(f, "bluealsa %s\n", bt_pcm);	/* (the volume script: the headphones' own volume) */
@@ -700,7 +722,7 @@ index 05ef55a4..46dd102c 100644
  		fclose(f);
  		rename("/run/banana/mixer.new", "/run/banana/mixer");
  	}
-@@ -1224,6 +1268,7 @@ static void audio_setup(void)
+@@ -1224,6 +1290,7 @@ static void audio_setup(void)
  {
  	audio_find_cards();
  	if (card_codec < 0) { audio_route(); return; }	/* no sound card at all (QEMU): nothing to set */
@@ -708,7 +730,7 @@ index 05ef55a4..46dd102c 100644
  	char c[16];
  	snprintf(c, sizeof c, "%d", card_codec);
  	/* the rk817's output path: HP drives both its jack and (on the RG DS) the speaker amplifier */
-@@ -1292,6 +1337,7 @@ static void sound_poll(void)
+@@ -1292,6 +1359,7 @@ static void sound_poll(void)
  	sound_child = 0;
  	sound_ready = 1;
  	audio_find_cards();
@@ -716,7 +738,7 @@ index 05ef55a4..46dd102c 100644
  	audio_route();
  	boot_mark("bananad: sound ready");
  	for (; volume_pending > 0; volume_pending--) volume(1);
-@@ -1551,6 +1597,7 @@ static int battery_state(char *name, size_t n, int *pct, int *charging)
+@@ -1551,6 +1619,7 @@ static int battery_state(char *name, size_t n, int *pct, int *charging)
  	int found = 0;
  	while (!found && (e = readdir(d))) {
  		if (e->d_name[0] == '.') continue;
@@ -724,7 +746,7 @@ index 05ef55a4..46dd102c 100644
  		char p[320], s[32];
  		snprintf(p, sizeof p, "/sys/class/power_supply/%s/type", e->d_name);
  		read_str(p, s, sizeof s);
-@@ -1593,6 +1640,36 @@ int leds_last = -2;	/* the upper LED's state as last set; -2: set it again */
+@@ -1593,6 +1662,36 @@ int leds_last = -2;	/* the upper LED's state as last set; -2: set it again */
  static int amber_last = -2;	/* the charging LED's, the same way */
  static void leds_update(void)
  {
@@ -761,7 +783,7 @@ index 05ef55a4..46dd102c 100644
  	static char green[300], red[300], amber[300];
  	static int looked;
  	int last = leds_last;
-@@ -1913,6 +1990,10 @@ static void handle(const struct input_event *e)
+@@ -1913,6 +2012,10 @@ static void handle(const struct input_event *e)
  		if (headphones != e->value) { headphones = e->value; if (!sound_child) audio_route(); }	/* (else sound_poll routes) */
  		return;
  	}
@@ -772,7 +794,7 @@ index 05ef55a4..46dd102c 100644
  	if (e->type != EV_KEY) return;
  	/* a volume key held down: the kernel's autorepeat (gpio-keys-volume's), a step every 150 ms so the level card keeps
  	 * up; every other key's repeats mean nothing here */
-@@ -1950,6 +2031,7 @@ static int battery_discharging_pct(void)
+@@ -1950,6 +2053,7 @@ static int battery_discharging_pct(void)
  	int r = -1;
  	while ((e = readdir(d))) {
  		if (e->d_name[0] == '.') continue;
@@ -780,7 +802,7 @@ index 05ef55a4..46dd102c 100644
  		char p[320], s[32];
  		snprintf(p, sizeof p, "/sys/class/power_supply/%s/type", e->d_name);
  		read_str(p, s, sizeof s);
-@@ -2049,10 +2131,15 @@ int main(int argc, char **argv)
+@@ -2049,10 +2153,16 @@ int main(int argc, char **argv)
  {
  	(void)argc; (void)argv;
  	openlog("bananad", LOG_PID, LOG_DAEMON);
@@ -793,10 +815,11 @@ index 05ef55a4..46dd102c 100644
  	load_conf("/data/banana/bananad.conf");
  	load_timezone();
 +	fan_apply();
++	rumble_apply();
  	/* the LEDs at the user's level first: everything below (the inputs, alsactl, the mixer, the second card) takes a
  	 * while, and the power LED is the first sign the handheld is starting (U-Boot lit it, the kernel kept it on) */
  	leds_update();
-@@ -2117,6 +2204,7 @@ int main(int argc, char **argv)
+@@ -2117,6 +2227,7 @@ int main(int argc, char **argv)
  		 * so the idle sleep, or the lid's, comes once it is over */
  		int awake = pid_of("/run/banana/awake.pid") != 0 || pid_of("/run/banana/files.pid") != 0 || transfer_hold();
  		if (awake && wait > 5) wait = 5;
@@ -804,10 +827,19 @@ index 05ef55a4..46dd102c 100644
  		/* (only deadlines still ahead: one already passed was acted on after the last poll, or is held back by what
  		 * the action checks (the charger, the lid, no backlight) and a uevent or an input event brings it back; counted
  		 * here it spun this loop every 20 ms, on the charger for as long as the menu sat idle) */
-@@ -2141,6 +2229,10 @@ int main(int argc, char **argv)
+@@ -2132,6 +2243,7 @@ int main(int argc, char **argv)
+ 		if ((save_volume_at > 0 || save_backlight_at > 0) && wait > 0.5) wait = 0.5;
+ 		if (power_down && wait > 0.1) wait = 0.1;
+ 		if (recst.on && sel_down && !sel_marked && wait > 0.1) wait = 0.1;	/* (Select held: the marker at 2 s) */
++		if (duolite && !rumble_applied && wait > 1) wait = 1;
+ 		if (sound_child > 0 && wait > 0.05) wait = 0.05;	/* the sound's setup running: its end looked for (the first second or so) */
+ 		if (lid_sleep_at > 0) { double d = lid_sleep_at - tnow; if (d < wait) wait = d > 0 ? d : 0; }
+ 		if (menu_sleep_at > 0) { double d = menu_sleep_at - tnow; if (d < wait) wait = d > 0 ? d : 0; }
+@@ -2141,6 +2253,11 @@ int main(int argc, char **argv)
  		in_poll = 0;
  		double now = mono();
  		sound_poll();
++		if (duolite && !rumble_applied) rumble_apply();
 +		if (duolite && card_codec < 0 && !sound_child) {
 +			audio_find_cards();
 +			if (card_codec >= 0) sound_start();
@@ -815,15 +847,17 @@ index 05ef55a4..46dd102c 100644
  		if (stopping) {	/* a restart or a turn-off from the menu, an update: banana-ui's last events, then the card's copy */
  			if (rs_at >= 0) rec_sock_read(recsock);
  			rec("bananad", "stopped (the handheld restarts or turns off)");
-@@ -2157,6 +2249,7 @@ int main(int argc, char **argv)
+@@ -2157,6 +2274,9 @@ int main(int argc, char **argv)
  			save_volume_at = mono() + 2;	/* the settings screen may have set the volume: keep it as the keys' is kept */
  			leds_last = -2;
  			leds_update();
 +			fan_apply();
++			rumble_applied = 0;
++			rumble_apply();
  			say("settings read again: lid %s, auto-sleep %g min, LEDs %d", cfg.lid_sleep ? "sleeps" : "ignored", cfg.autosleep_min, cfg.led_brightness);
  			/* the menu's Power > Sleep: the same sleep as a press of the power button, half a second on */
  			if (unlink("/run/banana/sleep-now") == 0) { menu_sleep_at = mono() + 0.5; say("the menu asked for a sleep"); }
-@@ -2186,6 +2279,7 @@ int main(int argc, char **argv)
+@@ -2186,6 +2306,7 @@ int main(int argc, char **argv)
  			if (inputs) {
  				usleep(200000);	/* udev/mdev sets the node's permissions */
  				open_inputs();
@@ -2404,7 +2438,7 @@ index 65a057ed..e22517f9 100644
  		logf("shutdown animation");
  		playOutro(disp, be, o, variant, sound);
 diff --git a/ui/src/settings.cpp b/ui/src/settings.cpp
-index ee1ceffb..e233dae4 100644
+index ee1ceffb..345f13ac 100644
 --- a/ui/src/settings.cpp
 +++ b/ui/src/settings.cpp
 @@ -409,7 +409,9 @@ namespace banana
@@ -2418,15 +2452,20 @@ index ee1ceffb..e233dae4 100644
  	static int backlightPair(const std::string& path, int i)
  	{
  		int t = 0, b = 0;
-@@ -472,6 +474,7 @@ namespace banana
+@@ -472,6 +474,12 @@ namespace banana
  			{ "0%", "10%", "20%", "30%", "40%", "50%", "60%", "70%", "80%", "90%", "100%" }, { "0", "10", "20", "30", "40", "50", "60", "70", "80", "90", "100" }, Item::VOLUME);
  		add(D, "music", "Menu sounds", "The menu's clicks, and the cartridge sound when a game starts.", menu, "sounds", { "On", "Off" }, { "on", "off" });
  		items.back().hints = { "The menu plays its sounds.", "The menu is silent. Games keep their sound." };
++		if (board_() == "duolite") {
++			add(D, "gamepad", "Rumble", "Game vibration for emulators and compatible ports. Off stops the built-in motor everywhere.", power, "rumble",
++				{ "On", "Off" }, { "yes", "no" });
++			items.back().hints = { "Games can use the built-in rumble motor.", "The motor stays off, including while a game is running." };
++		}
 +		add(D, "music", "Microphone test", "Check the microphone level, record five seconds and listen back. Nothing is saved to the card.", "", "mic_test", {}, {}, Item::PAGE);
  		add(D, "music", "Speaker EQ", "", "", "speaker_eq_page", {}, {}, Item::PAGE);
  		add(D, "picture", "Shown systems", "Which systems are on the home row. A opens the list.", "", "shelves", {}, {}, Item::PAGE);
  		add(D, "picture", "Menu look", "The top screen's motion, battery and clock, the boot animation, and the DS cartridges.", "", "menu_look", {}, {}, Item::PAGE);
-@@ -501,6 +504,14 @@ namespace banana
+@@ -501,6 +509,14 @@ namespace banana
  		add(P, "moon", "Waking up", "How the handheld wakes from sleep.",
  			power, "fast_resume", { "Fast", "Careful" }, { "yes", "no" });
  		items.back().hints = { "Wakes up quickly.", "Wakes up a little slower, the safest way. Chosen by itself if waking ever goes wrong." };
@@ -2441,7 +2480,7 @@ index ee1ceffb..e233dae4 100644
  		add(P, "moon", "LEDs", "The lights on the handheld: green, red when the battery is low, amber while charging.", power, "led_brightness",
  			{ "Bright", "Dim", "Off" }, { "255", "40", "0" });
  		items.back().hints = { "Full brightness.", "Softer lights.", "No lights." };
-@@ -508,9 +519,13 @@ namespace banana
+@@ -508,9 +524,13 @@ namespace banana
  		// then a page for each emulator's own settings, in that emulator's files, both whichever is chosen (to set one up
  		// before switching to it). Both draw the DS's 3D with SuperDrastic's Gengis Engine, always (run-drastic, run-bananads).
  		const char* N = "Nintendo DS";
@@ -2455,7 +2494,7 @@ index ee1ceffb..e233dae4 100644
  		add(N, "nds", "Quick resume", "What quitting a game does.",
  			menu, "quick_resume", { "Off", "On" }, { "off", "on" });
  		items.back().hints = { "Quitting ends the game. Next time it starts from its title screen.", "Quitting keeps your place, even through a shutdown. Next time the game carries on from there." };
-@@ -522,7 +537,7 @@ namespace banana
+@@ -522,7 +542,7 @@ namespace banana
  		// the DS's own name (its firmware's user name), in both emulators at once: what a game calls you (#30)
  		add(N, "nds", "DS name", "The name the DS itself is set to: what games call you. 10 characters at most.",
  			"", "ds_name", {}, {}, Item::PAGE);
@@ -2464,7 +2503,7 @@ index ee1ceffb..e233dae4 100644
  		add(N, "nds", "BananaDS", "BananaDS's own settings: picture, speed, sound and its hotkeys.", "", "nds_bananads", {}, {}, Item::PAGE);
  		std::vector<std::string> shaderNames, shaderValues;
  		shaderChoices(data, shaderNames, shaderValues);
-@@ -533,7 +548,9 @@ namespace banana
+@@ -533,7 +553,9 @@ namespace banana
  		{
  			const char* BD = "BananaDS";
  			const std::string bds = "/data/bananads/bananads.conf";
@@ -2475,7 +2514,7 @@ index ee1ceffb..e233dae4 100644
  			add(BD, "nds", "3D resolution", "How sharp DS games' 3D is drawn.",
  				bds, "render.scale", { "1x", "2x", "3x (experimental)", "4x (experimental)" }, { "1", "2", "3", "4" });
  			items.back().def = "2";	// (#250: smallest to largest, left to right; 2x stays the default, as run-bananads writes it)
-@@ -581,7 +598,7 @@ namespace banana
+@@ -581,7 +603,7 @@ namespace banana
  				"", "nds-reset-bananads", { "" }, { "" }, Item::ACTION);
  		}
  		// the SuperDrastic page (Nintendo DS > SuperDrastic): superdrastic.conf and DraStic's drastic.cfg
@@ -2484,7 +2523,7 @@ index ee1ceffb..e233dae4 100644
  			const char* SD = "SuperDrastic";
  			add(SD, "nds", "Shader", shaderHelp, sd, "DSFLIP_SHADER", shaderNames, shaderValues);
  			add(SD, "nds", "3D resolution", "How sharp DS games' 3D is drawn.", dcfg, "hires_3d", { "1x", "2x" }, { "0", "1" });
-@@ -884,6 +901,7 @@ namespace banana
+@@ -884,6 +906,7 @@ namespace banana
  		add(PW, "moon", "Sleep", "Puts the handheld to sleep, as a press of the power button does. Your game pauses. Press A twice.", "", "sleep", { "" }, { "" }, Item::ACTION);
  		add(PW, "gear", "Restart", "Restarts the handheld. Press A twice.", "", "reboot", { "" }, { "" }, Item::ACTION);
  		add(PW, "gear", "Shut down", "Turns the handheld off. Press A twice. (Or hold the power button.)", "", "poweroff", { "" }, { "" }, Item::ACTION);
@@ -2492,19 +2531,19 @@ index ee1ceffb..e233dae4 100644
  		// the Home server page (Network > Home server)
  		const char* HS = "Home server";
  		add(HS, "phone", "Server", "", "", "hs_server", {}, {}, Item::PAGE);
-@@ -928,9 +946,9 @@ namespace banana
+@@ -928,9 +951,9 @@ namespace banana
  			{ "", { "Nintendo DS", "Other systems", "Display & sound", "Network", "Sleep & power", "System" } },	// the tiles
  			{ "Nintendo DS", { "Emulator", "Buttons", "SuperDrastic", "BananaDS", "Quick resume", "DS language", "DS name" } },
  			{ "Other systems", { "Buttons", "Picture & sound", "Quick resume", "Screen", "Second screen", "Emulators", "Frontend", "RetroAchievements", "Reset RetroArch" } },
 -			{ "Display & sound", { "Volume", "Speaker EQ", "Top brightness", "Bottom brightness", "Theme", "Accent colour", "Shown systems", "Menu sounds", "Screen colours", "Menu look", "Text on accent" } },
-+			{ "Display & sound", { "Volume", "Microphone test", "Speaker EQ", "Top brightness", "Bottom brightness", "Theme", "Accent colour", "Shown systems", "Menu sounds", "Screen colours", "Menu look", "Text on accent" } },
++			{ "Display & sound", { "Volume", "Rumble", "Microphone test", "Speaker EQ", "Top brightness", "Bottom brightness", "Theme", "Accent colour", "Shown systems", "Menu sounds", "Screen colours", "Menu look", "Text on accent" } },
  			{ "Network", { "Wi-Fi", "Network", "Bluetooth", "Home server", "File sharing" } },
 -			{ "Sleep & power", { "Sleep when idle", "Closing the lid", "Dim when idle", "Power off after sleeping", "LEDs", "Waking up" } },
 +			{ "Sleep & power", { "Sleep when idle", "Closing the lid", "Dim when idle", "Power off after sleeping", "Indicator", "LEDs", "Fan", "Waking up" } },
  			{ "System", { "Updates", "Language", "Time zone", "Box art", "Hotkeys", "About", "Credits", "First-time setup", "Reset system settings", "Reset emulator settings" } },
  			{ "SuperDrastic", { "Shader", "3D resolution", "CPU clock", "Frame pacing", "Threaded 3D", "Microphone", "Low latency (experimental)", "Hotkeys", "Reset buttons", "Reset DraStic" } },
  			{ "BananaDS", { "Shader", "3D resolution", "CPU clock", "Frame pacing", "Timing", "DS CPU speed", "Microphone", "Mic sensitivity", "Edge marking", "Fog", "Low latency (experimental)", "Hotkeys", "Reset BananaDS" } },
-@@ -999,7 +1017,7 @@ namespace banana
+@@ -999,7 +1022,7 @@ namespace banana
  			if (pm <= 0) pm = backlightPair(data + "/backlight", i);
  			if (pm <= 0)
  			{
@@ -2513,7 +2552,7 @@ index ee1ceffb..e233dae4 100644
  				int max = atoi(readLine(b + "/max_brightness").c_str()), cur = atoi(readLine(b + "/brightness").c_str());
  				if (max > 0) pm = cur * 1000 / max;
  			}
-@@ -1047,6 +1065,7 @@ namespace banana
+@@ -1047,6 +1070,7 @@ namespace banana
  		{ const char* tv = getenv("BANANA_VERSION"); version = tv ? tv : readLine("/etc/banana/version"); }	// (the tests: as the update script)
  		slot = readLine("/run/banana/slot");
  		{ const char* tb = getenv("BANANA_BOARD"); board = tb ? tb : readLine("/etc/banana/board"); }
@@ -2521,7 +2560,7 @@ index ee1ceffb..e233dae4 100644
  		std::string model;
  		{
  			std::ifstream f("/proc/device-tree/model");
-@@ -1085,6 +1104,8 @@ namespace banana
+@@ -1085,6 +1109,8 @@ namespace banana
  		}
  		std::ostringstream a;
  		a << "Banana " << (version.empty() ? "dev" : version) << (slot.empty() ? "" : " (slot " + slot + ")") << " on the " << (model.empty() ? "handheld" : model) << ". ";
@@ -2530,7 +2569,7 @@ index ee1ceffb..e233dae4 100644
  		if (battery >= 0) a << "Battery " << battery << "%. ";
  		if (space[0]) a << "Card: " << space << ". ";
  		// the kernel too (#70): its version as uname gives it
-@@ -1129,6 +1150,8 @@ namespace banana
+@@ -1129,6 +1155,8 @@ namespace banana
  
  	void Settings::close()
  	{
@@ -2539,7 +2578,7 @@ index ee1ceffb..e233dae4 100644
  		mOpen = false;
  		page = LIST;
  		wizard = false;
-@@ -1187,14 +1210,14 @@ namespace banana
+@@ -1187,14 +1215,14 @@ namespace banana
  		if (it.kind == Item::BRIGHTNESS)
  		{
  			int pm = atoi(v.c_str()), i = it.key == "bottom" ? 1 : 0;
@@ -2556,7 +2595,7 @@ index ee1ceffb..e233dae4 100644
  				int omax = atoi(readLine(o + "/max_brightness").c_str());
  				other = omax > 0 ? (atoi(readLine(o + "/brightness").c_str()) * 1000 + omax / 2) / omax : pm;
  			}
-@@ -1238,7 +1261,7 @@ namespace banana
+@@ -1238,7 +1266,7 @@ namespace banana
  		}
  		if (it.file == data + "/bananad.conf") poke("bananad");
  		if (it.key == "timezone") { setenv("TZ", v.c_str(), 1); tzset(); poke("bananad"); }	// bananad's logs too
@@ -2565,7 +2604,7 @@ index ee1ceffb..e233dae4 100644
  		if (it.key == "bluetooth")
  		{
  			btEnabled = v == "on";
-@@ -1320,6 +1343,7 @@ namespace banana
+@@ -1320,6 +1348,7 @@ namespace banana
  			if (it.key == "developer") { recordEvent("settings", "Developer options"); openSection("Developer options"); return MOVED; }
  			if (it.key == "scrape") { startScrape(); return MOVED; }
  			if (it.key == "colors") { openColors(); return MOVED; }
@@ -2573,7 +2612,7 @@ index ee1ceffb..e233dae4 100644
  			if (it.key == "speaker_eq_page") { openEq(); return MOVED; }
  			if (it.key == "share_account") { startEntry(ENTRY_SMB_USER, "File sharing", "Name", LIST, shareUser()); return MOVED; }
  			if (it.key == "ds_name") { startEntry(ENTRY_DS_NAME, "The DS's name", "10 characters at most", LIST, dsName()); return MOVED; }
-@@ -1410,7 +1434,7 @@ namespace banana
+@@ -1410,7 +1439,7 @@ namespace banana
  				armed = -1;
  				return resetApply(it.key == "reset_emulator");
  			}
@@ -2582,16 +2621,16 @@ index ee1ceffb..e233dae4 100644
  		}
  		int n = (int)it.values.size();
  		int at = it.at + dir;
-@@ -1465,7 +1489,7 @@ namespace banana
+@@ -1465,7 +1494,7 @@ namespace banana
  			// show when the card has no line), the backlights and the mixer's level
  			static const struct { const char* key; const char* def; } BANANAD[] = {
  				{ "autosleep_minutes", "10" }, { "dim_minutes", "2" }, { "lid_sleep", "yes" },
 -				{ "poweroff_after_sleep_minutes", "0" }, { "fast_resume", "yes" }, { "led_brightness", "128" } };
-+				{ "poweroff_after_sleep_minutes", "0" }, { "fast_resume", "yes" }, { "led_brightness", "128" }, { "led_mode", "charging" }, { "fan_profile", "auto" } };
++				{ "poweroff_after_sleep_minutes", "0" }, { "fast_resume", "yes" }, { "led_brightness", "128" }, { "led_mode", "charging" }, { "fan_profile", "auto" }, { "rumble", "yes" } };
  			for (const auto& b : BANANAD)
  				setConfValue(data + "/bananad.conf", b.key, getConfValue("/etc/banana/bananad.conf", b.key, b.def));
  			if (DIR* d = opendir("/sys/class/backlight"))
-@@ -1484,7 +1508,7 @@ namespace banana
+@@ -1484,7 +1513,7 @@ namespace banana
  			// the side effects save() runs for keys that live outside settings.conf
  			std::map<std::string, std::string> rs = readSettings(data);
  			if (!rs["timezone"].empty()) { setenv("TZ", rs["timezone"].c_str(), 1); tzset(); }
@@ -2600,7 +2639,7 @@ index ee1ceffb..e233dae4 100644
  			spawn("/usr/libexec/banana/ssh", rs["ssh"] == "on" ? "up" : "down");
  			spawn("/usr/libexec/banana/share", rs["share"] == "on" ? "up" : "down");
  			spawn("/usr/libexec/banana/sd2", "scan");
-@@ -1524,6 +1548,7 @@ namespace banana
+@@ -1524,6 +1553,7 @@ namespace banana
  		if (page == ACHIEVEMENTS) return pressAch(k);
  		if (page == ARTPICK) return pressArt(k);
  		if (page == COLORS) return pressColors(k);
@@ -2608,7 +2647,7 @@ index ee1ceffb..e233dae4 100644
  		if (page == SPEAKEREQ) return pressEq(k);
  		if (page == UPDATES) return pressUpdates(k);
  		if (page == SETUP) return pressSetup(k);
-@@ -1714,6 +1739,14 @@ namespace banana
+@@ -1714,6 +1744,14 @@ namespace banana
  		if (page == ACHIEVEMENTS) return touchAch(cx, cy);
  		if (page == ARTPICK) return touchArt(cx, cy);
  		if (page == COLORS) return touchColors(cx, cy);
@@ -2623,7 +2662,7 @@ index ee1ceffb..e233dae4 100644
  		if (page == SPEAKEREQ) return touchEq(cx, cy);
  		if (page == THEMES) return touchThemes(cx, cy);
  		if (page == CREDITS) { if (downY >= 418 && downY <= 466 && downX < 320) return pressCredits(Key::B); return NONE; }
-@@ -2145,7 +2178,7 @@ namespace banana
+@@ -2145,7 +2183,7 @@ namespace banana
  		else if (!body.empty()) text(fit(body, false, 18, 540), false, 18, 78, 38, lightText);
  	}
  
@@ -2632,7 +2671,7 @@ index ee1ceffb..e233dae4 100644
  	{
  		// ROCKNIXDS's volume indicator (SuperDrastic's ui.c render_volume), in the same place: a pill at the top of the
  		// top panel, a speaker (crossed out at 0) or a sun, the in-game menu's 10-segment bar and the percent
-@@ -2158,7 +2191,8 @@ namespace banana
+@@ -2158,7 +2196,8 @@ namespace banana
  		percent = std::min(100, std::max(0, percent));
  		bool sun = label == "Brightness";
  		const Color light = Color::hex(0xf1ede2), bar = Color::hex(0xffe68a), off = Color::hex(0x3a3540), red = Color::hex(0xff8a96);
@@ -2642,7 +2681,7 @@ index ee1ceffb..e233dae4 100644
  		box("osd", false, x0, y0, w, h);
  		int k = std::max(2, (int)std::lround(2 * s));	// device px per icon pixel
  		const char* const* ic = sun ? SUN : percent <= 0 ? MUTE : VOL;
-@@ -2244,8 +2278,8 @@ namespace banana
+@@ -2244,8 +2283,8 @@ namespace banana
  		const Item& first = items[groupStart(g0)];
  
  		be->beginScreen(0);
@@ -2653,7 +2692,7 @@ index ee1ceffb..e233dae4 100644
  		icon(groupIcon[first.section], 50, 56, 3);
  		text("Settings", true, 17, 170, 62, p.muted, true, 1.4f);
  		text(groups[g0], true, 30, 170, 88, p.ink);
-@@ -2308,7 +2342,8 @@ namespace banana
+@@ -2308,7 +2347,8 @@ namespace banana
  		if (cur.key == "wifi") help = "Wi-Fi: " + wifiInfo + ". Network, below, joins one; networks can also be written in banana/wifi.conf on a computer (see banana/README.txt).";
  		if (cur.key == "ssh")
  			help = "For working on Banana itself: ssh root@" + (ip.empty() ? std::string("<address>") : ip) +
@@ -2663,7 +2702,7 @@ index ee1ceffb..e233dae4 100644
  		if (cur.key == "hs_server")
  		{
  			std::string n = homeServer();
-@@ -2373,7 +2408,7 @@ namespace banana
+@@ -2373,7 +2413,7 @@ namespace banana
  		{
  			st.size = z;
  			size = z;
@@ -2672,7 +2711,7 @@ index ee1ceffb..e233dae4 100644
  			if ((lines - 1) * std::round(z * 1.4f) + z * 1.3f <= bottom - top) return true;
  		}
  		return false;
-@@ -2383,7 +2418,7 @@ namespace banana
+@@ -2383,7 +2423,7 @@ namespace banana
  		float z; int n;
  		bool ok = helpFit(t, top, bottom, z, n);
  		int maxLines = ok ? n : std::max(1, (int)((bottom - top - z * 1.3f) / std::round(z * 1.4f)) + 1);
@@ -2681,7 +2720,7 @@ index ee1ceffb..e233dae4 100644
  	}
  
  	int Settings::helpCheck(const std::function<void(const std::string&)>& log)
-@@ -2446,6 +2481,7 @@ namespace banana
+@@ -2446,6 +2486,7 @@ namespace banana
  		if (page == ACHIEVEMENTS) { renderAch(); return; }
  		if (page == ARTPICK) { renderArt(); return; }
  		if (page == COLORS) { renderColors(); return; }
@@ -2689,7 +2728,7 @@ index ee1ceffb..e233dae4 100644
  		if (page == SPEAKEREQ) { renderEq(); return; }
  		if (page == UPDATES) { renderUpdates(); return; }
  		if (page == SETUP) { renderSetup(); return; }
-@@ -2463,8 +2499,8 @@ namespace banana
+@@ -2463,8 +2504,8 @@ namespace banana
  
  		// ---- top: what the selected setting is ----
  		be->beginScreen(0);
@@ -2700,7 +2739,7 @@ index ee1ceffb..e233dae4 100644
  		// the header (icon, section, name, value) kept tight so the help under it has ten lines (user feedback 2026-10-25: the
  		// Shader row's was cut at seven)
  		icon(cur.icon, 50, HEAD_ICON_Y, 3);
-@@ -2646,6 +2682,7 @@ namespace banana
+@@ -2646,6 +2687,7 @@ namespace banana
  	{
  		now = t;
  		if (!mOpen) return false;
@@ -2708,7 +2747,7 @@ index ee1ceffb..e233dae4 100644
  		bool scrapeChanged = pollScrape(t);
  		scrapeChanged |= pollSync(t);
  		scrapeChanged |= pollPickGames();
-@@ -2811,6 +2848,7 @@ namespace banana
+@@ -2811,6 +2853,7 @@ namespace banana
  
  	int Settings::pageWake(double t) const
  	{
@@ -2716,7 +2755,7 @@ index ee1ceffb..e233dae4 100644
  		if (scanJob.running() || statusJob.running() || artJob.running() || checkJob.running() || volJob.running() || betaJob.running()) return 100;
  		if (btListJob.running() || btScanJob.running() || btActJob.running()) return 100;
  		if (pickLoading) return 150;	// (Choose games: the server's list as it comes)
-@@ -3098,8 +3136,8 @@ namespace banana
+@@ -3098,8 +3141,8 @@ namespace banana
  		SPal p = pal(light);
  		const wifi::Network* cur = nsel < (int)nets.size() ? &nets[nsel] : nullptr;
  		be->beginScreen(0);
@@ -2727,7 +2766,7 @@ index ee1ceffb..e233dae4 100644
  		icon("phone", 50, 56, 3);
  		text("Network", true, 17, 170, 62, p.muted, true, 1.4f);
  		text("Wi-Fi networks", true, 30, 170, 88, p.ink);
-@@ -3317,8 +3355,8 @@ namespace banana
+@@ -3317,8 +3360,8 @@ namespace banana
  		SPal p = pal(light);
  		const bt::Device* cur = bsel < (int)btDevs.size() ? &btDevs[bsel] : nullptr;
  		be->beginScreen(0);
@@ -2738,7 +2777,7 @@ index ee1ceffb..e233dae4 100644
  		icon("phone", 50, 56, 3);
  		text("Network", true, 17, 170, 62, p.muted, true, 1.4f);
  		text("Bluetooth devices", true, 30, 170, 88, p.ink);
-@@ -3377,19 +3415,20 @@ namespace banana
+@@ -3377,19 +3420,20 @@ namespace banana
  	void Settings::renderKeyboard()
  	{
  		SPal p = pal(light);
@@ -2764,7 +2803,7 @@ index ee1ceffb..e233dae4 100644
  			w = text(shown, true, 22, 0, 0, p.ink, false, 0, true);
  			text(shown, true, 22, 70, 165, p.ink);
  		}
-@@ -3412,7 +3451,7 @@ namespace banana
+@@ -3412,7 +3456,7 @@ namespace banana
  			: entry == ENTRY_GAME_NAME || entry == ENTRY_GAME_SORT ? "A types the key, B deletes, X capitals, L symbols, Y a space, START when it is typed. Kept in banana/game-titles.tsv on the card."
  			: entry == ENTRY_ART_SEARCH ? "A types the key, B deletes, X capitals, L symbols, Y a space, START looks. A few words of the name are enough: the closest names come first."
  			: "A types the key, B deletes, X capitals, L symbols, Y a space, START when it is typed. Or tap the keys. Accounts are kept in banana/accounts.conf on the card.";
@@ -2773,7 +2812,7 @@ index ee1ceffb..e233dae4 100644
  		be->endScreen();
  
  		be->beginScreen(1);
-@@ -3493,6 +3532,7 @@ namespace banana
+@@ -3493,6 +3537,7 @@ namespace banana
  		{ const char* tv = getenv("BANANA_VERSION"); version = tv ? tv : readLine("/etc/banana/version"); }
  		slot = readLine(runDir + "/slot");
  		{ const char* tb = getenv("BANANA_BOARD"); board = tb ? tb : readLine("/etc/banana/board"); }
@@ -2781,7 +2820,7 @@ index ee1ceffb..e233dae4 100644
  		listPkgs();
  		readOnline();
  		downloading = false;
-@@ -3657,6 +3697,7 @@ namespace banana
+@@ -3657,6 +3702,7 @@ namespace banana
  
  	bool Settings::betaOn() const
  	{
@@ -2789,7 +2828,7 @@ index ee1ceffb..e233dae4 100644
  		// the password kept (.beta) and the channel not turned off since (.channel says "github" then: the password stays)
  		return betaKept() && readLine(updatesDir + "/.channel") != "github";
  	}
-@@ -3689,6 +3730,11 @@ namespace banana
+@@ -3689,6 +3735,11 @@ namespace banana
  
  	Settings::Result Settings::pressBeta()
  	{
@@ -2801,7 +2840,7 @@ index ee1ceffb..e233dae4 100644
  		if (betaJob.running() || downloading || checkJob.running()) return NONE;
  		if (!betaOn())
  		{
-@@ -3984,9 +4030,9 @@ namespace banana
+@@ -3984,9 +4035,9 @@ namespace banana
  		// the top screen: the pattern, its name on a strip at the top
  		be->beginScreen(0);
  		colorsPattern(0, 0, 480);
@@ -2813,7 +2852,7 @@ index ee1ceffb..e233dae4 100644
  		std::string hint = !message.empty() ? message : "Make the screen you correct look like the other one. X: no correction.";
  		text(fit(hint, true, 14, 616), true, 14, 12, 457, Color::hex(0xd0d0d0));
  		be->endScreen();
-@@ -4019,6 +4065,50 @@ namespace banana
+@@ -4019,6 +4070,50 @@ namespace banana
  		be->endScreen();
  	}
  
@@ -2864,7 +2903,7 @@ index ee1ceffb..e233dae4 100644
  	// ---- Speaker EQ ------------------------------------------------------------------------------------------------
  	// Display & sound > Speaker EQ: on or off, the profile, and seven sliders that adjust it. Each slider shows the
  	// curve's level at its frequency, the profile's to begin with (Tuned's 1 kHz starts at -10 dB), and a step moves
-@@ -4163,7 +4253,7 @@ namespace banana
+@@ -4163,7 +4258,7 @@ namespace banana
  
  		// the top screen: the curve the speakers play through now, 100 Hz to 20 kHz, -20 to +20 dB
  		be->beginScreen(0);
@@ -2873,7 +2912,7 @@ index ee1ceffb..e233dae4 100644
  		text("Speaker EQ", true, 20, 24, 18, p.ink, true, 1.2f);
  		std::string state = eqEdit.on ? profileName : "Off";
  		float sw = text(state, true, 18, 0, 0, p.accent, false, 0, true);
-@@ -4307,8 +4397,8 @@ namespace banana
+@@ -4307,8 +4402,8 @@ namespace banana
  		SPal p = pal(light);
  		bool busy = artJob.running();
  		be->beginScreen(0);
@@ -2884,7 +2923,7 @@ index ee1ceffb..e233dae4 100644
  		icon("picture", 50, 56, 3);
  		text("Box art for", true, 17, 170, 62, p.muted, true, 1.4f);
  		{ AsNamed named(*this); text(fit(pgTitle, true, 30, 420), true, 30, 170, 88, p.ink); }
-@@ -4380,7 +4470,7 @@ namespace banana
+@@ -4380,7 +4475,7 @@ namespace banana
  			return MOVED;
  		}
  		case Key::X:
@@ -2893,7 +2932,7 @@ index ee1ceffb..e233dae4 100644
  			{
  				// X, X: the kept beta password forgotten (the channel off; A asks for it again)
  				if (armed != 3001) { armed = 3001; return MOVED; }
-@@ -4438,8 +4528,8 @@ namespace banana
+@@ -4438,8 +4533,8 @@ namespace banana
  		const std::string handheld = bd == "rgds-plus" ? "RG DS Plus" : bd == "rgds" ? "RG DS" : "handheld";
  		auto mb = [](long long b) { return std::to_string((b + 524288) / 1048576); };
  		be->beginScreen(0);
@@ -2904,7 +2943,7 @@ index ee1ceffb..e233dae4 100644
  		icon("gear", 50, 56, 3);
  		text("System", true, 17, 170, 62, p.muted, true, 1.4f);
  		text("Update", true, 30, 170, 88, p.ink);
-@@ -4482,7 +4572,8 @@ namespace banana
+@@ -4482,7 +4577,8 @@ namespace banana
  		}
  		else if (usel == 1)
  		{
@@ -2914,7 +2953,7 @@ index ee1ceffb..e233dae4 100644
  			else if (!message.empty()) help = message;
  			else if (betaOn()) help = "Two channels: GitHub's releases, or the beta testers' builds on bananaos-cfw.dev. On: the beta builds. A, then A again, turns it off (GitHub again); the password is kept for turning it back on. X twice forgets the password.";
  			else if (betaKept()) help = "Two channels: GitHub's releases (now), or the beta testers' builds on bananaos-cfw.dev. A turns the beta channel on again with the password kept on the card; X twice forgets the password.";
-@@ -4528,6 +4619,7 @@ namespace banana
+@@ -4528,6 +4624,7 @@ namespace banana
  				name = "Beta channel";
  				hot = armed == 3000 || betaJob.running();
  				tag = betaJob.running() ? "Checking..." : armed == 3000 ? "Press A again" : armed == 3001 ? "Press X again: forget" : betaOn() ? "On" : betaKept() ? "Off (password kept)" : "Off";
@@ -2922,7 +2961,7 @@ index ee1ceffb..e233dae4 100644
  			}
  			else
  			{
-@@ -4544,6 +4636,7 @@ namespace banana
+@@ -4544,6 +4641,7 @@ namespace banana
  		float bw = faceWidth("B", "Back");
  		if (!applying) face("B", "Back", 18, bw);
  		std::string act = updated ? "Restart" : applying ? "" : usel == 0 ? oact
@@ -2930,7 +2969,7 @@ index ee1ceffb..e233dae4 100644
  			: usel == 1 ? (betaJob.running() ? "" : !betaOn() ? "Turn on" : armed == 3000 ? "Confirm" : "Turn off")
  			: armed == 1000 + usel - 2 ? "Confirm" : "Update";
  		if (!act.empty())
-@@ -4634,8 +4727,8 @@ namespace banana
+@@ -4634,8 +4732,8 @@ namespace banana
  		const int VIS = 8;
  		const std::string ver = readLine("/etc/banana/version");
  		be->beginScreen(0);
@@ -2941,7 +2980,7 @@ index ee1ceffb..e233dae4 100644
  		icon("gear", 50, 56, 3);
  		text("Credits", true, 17, 170, 62, p.muted, true, 1.4f);
  		text(fit("BananaOS " + (ver.empty() ? std::string("dev") : ver), true, 30, 420), true, 30, 170, 88, p.ink);
-@@ -4808,8 +4901,8 @@ namespace banana
+@@ -4808,8 +4906,8 @@ namespace banana
  		long long chosenBytes = 0; int chosenN = 0;
  		for (auto& g : pickGames) if (g.on) { chosenBytes += g.bytes; chosenN++; }
  		be->beginScreen(0);
@@ -2952,7 +2991,7 @@ index ee1ceffb..e233dae4 100644
  		icon("phone", 50, 56, 3);
  		text("Home server", true, 17, 170, 62, p.muted, true, 1.4f);
  		text("Choose games", true, 30, 170, 88, p.ink);
-@@ -5009,8 +5102,8 @@ namespace banana
+@@ -5009,8 +5107,8 @@ namespace banana
  		for (auto& it : items) if (it.key == "theme") cur = it.at;
  		const std::string& v = thValues.empty() ? std::string() : thValues[thSel];
  		be->beginScreen(0);
@@ -2963,7 +3002,7 @@ index ee1ceffb..e233dae4 100644
  		icon("picture", 50, 56, 3);
  		text("Theme", true, 17, 170, 62, p.muted, true, 1.4f);
  		if (!thNames.empty()) text(fit(thNames[thSel], true, 30, 420), true, 30, 170, 88, p.ink);
-@@ -5137,8 +5230,8 @@ namespace banana
+@@ -5137,8 +5235,8 @@ namespace banana
  		};
  
  		be->beginScreen(0);
@@ -2974,7 +3013,7 @@ index ee1ceffb..e233dae4 100644
  		icon("gear", 50, 56, 3);
  		text("Language", true, 17, 170, 62, p.muted, true, 1.4f);
  		raw(fit(L.name, true, 30, 420), true, 30, 170, 88, p.ink);
-@@ -5223,8 +5316,8 @@ namespace banana
+@@ -5223,8 +5321,8 @@ namespace banana
  		const std::string Q = "Change the menu's language?", N = "No, keep it", Y = "Yes, change it";
  
  		be->beginScreen(0);
@@ -2985,7 +3024,7 @@ index ee1ceffb..e233dae4 100644
  		centred(here(Q), true, 26, 120, p.ink);
  		centred(there(Q), true, 26, 168, p.ink);
  		centred(fromName + "  >  " + toName, true, 24, 250, p.accent);
-@@ -5307,8 +5400,8 @@ namespace banana
+@@ -5307,8 +5405,8 @@ namespace banana
  	{
  		SPal p = pal(light);
  		be->beginScreen(0);
@@ -2996,7 +3035,7 @@ index ee1ceffb..e233dae4 100644
  		icon("nds", 50, 56, 3);
  		text(hotAsk == 2 ? "This game's 3D resolution" : "3D resolution", true, 17, 170, 62, p.muted, true, 1.4f);
  		text("4x runs hot", true, 30, 170, 88, p.ink);
-@@ -5344,7 +5437,7 @@ namespace banana
+@@ -5344,7 +5442,7 @@ namespace banana
  		};
  
  		be->beginScreen(0);
@@ -3005,7 +3044,7 @@ index ee1ceffb..e233dae4 100644
  		centred(title, true, 30, 196, p.ink);
  		centred(applying ? "Don't turn the handheld off" : ver, true, 20, 244, p.muted);
  		be->endScreen();
-@@ -5858,8 +5951,8 @@ namespace banana
+@@ -5858,8 +5956,8 @@ namespace banana
  			: std::string(pgArtDone ? "Fetched" : "Find it by name"); };
  
  		be->beginScreen(0);
@@ -3016,7 +3055,7 @@ index ee1ceffb..e233dae4 100644
  		icon(pgNds ? "nds" : "gamepad", 50, HEAD_ICON_Y, 3);
  		text(row == PG_EMU ? "This game's emulator" : row == PG_SHADER ? "This game's shader" : row == PG_3D ? "This game's 3D" : row == PG_RES ? "This game's 3D resolution" : row == PG_MIC ? "This game's microphone" : row == PG_TIMING ? "This game's timing" : row == PG_CPU ? "This game's DS CPU speed" : row == PG_NAME ? "This game's name" : row == PG_SORT ? "This game's sort title" : row == PG_DELETE ? "Delete this game" : row == PG_ACH ? "This game's achievements" : "This game's box art",
  			true, 17, 170, HEAD_SECTION_Y, p.muted, true, 1.4f);
-@@ -6660,8 +6753,8 @@ namespace banana
+@@ -6660,8 +6758,8 @@ namespace banana
  
  		// ---- top panel: the step, its title and state, what it is for, the result ----
  		be->beginScreen(0);
@@ -3027,7 +3066,7 @@ index ee1ceffb..e233dae4 100644
  		icon(icons[sl], 50, 52, 3);
  		std::string stepLine = lang::tr("First-time setup") + "  \xc2\xb7  " + lang::tr("Step {n} of {m}");
  		for (auto [k, v] : { std::pair<std::string, std::string>{ "{n}", std::to_string(wsel + 1) }, { "{m}", std::to_string(nSteps) } })
-@@ -6791,7 +6884,7 @@ namespace banana
+@@ -6791,7 +6889,7 @@ namespace banana
  	{
  		SPal p = pal(light);
  		be->beginScreen(0);

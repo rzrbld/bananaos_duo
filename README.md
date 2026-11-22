@@ -39,7 +39,7 @@ Console icons appear before games are added. Copy your own games into the folder
 
 GB/GBC, GBA, NES, SNES, Mega Drive, PlayStation, N64, PICO-8, C64 and ZX Spectrum are also included. MAME needs a **MAME 2003-Plus** ROM set. 3DS needs decrypted dumps or homebrew; CIA installation is not implemented. See [STATUS.md](docs/STATUS.md) for display and performance limits.
 
-The original BananaOS in-game menu provides save/load, resume, brightness, restart and quit. **F + X** opens it. Vanilla PortMaster installs through the Store; OS integration leaves PortMaster and individual ports free to update themselves.
+The original BananaOS in-game menu provides save/load, resume, brightness, restart and quit. **F + X** opens it. Built-in rumble has a global On/Off switch under Display & sound; see [RUMBLE.md](docs/RUMBLE.md) for game/emulator requirements. Vanilla PortMaster installs through the Store; OS integration leaves PortMaster and individual ports free to update themselves.
 
 ## Build and contribute
 

@@ -55,6 +55,7 @@ cat >> "$T/etc/banana/bananad.conf" <<'EOF'
 # Duo Lite: illuminate only while plugged in (charging / off / battery).
 led_mode = charging
 fan_profile = auto
+rumble = yes
 # Save the game and shut down after 30 minutes asleep on battery.
 poweroff_after_sleep_minutes = 30
 EOF

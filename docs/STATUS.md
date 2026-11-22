@@ -15,6 +15,7 @@ Alpha firmware for **Retroid Pocket Duo Lite (SM6125 / Adreno 610)**. Tested on 
 | Game menu | Original BananaFront menu adapted to the wide top display; save/load, resume, brightness, restart and quit tested |
 | PortMaster | Vanilla installation with OS-managed paths/display/controller integration; application files and ports are not patched |
 | Audio | Speaker/headphone routes and physical volume controls implemented; headset output/loudness confirmed. Built-in microphone passed an acoustic capture test. Headset microphone capture is user-confirmed after correcting its SoundWire mapping. Alpha31 speaker/headphone hotplug passed the user test; the headphone pop fix was user-confirmed on Alpha32. See AUDIO.md. |
+| Rumble | Alpha33 adds standard gamepad force feedback, BananaDS Rumble Pak hooks and a global on/off switch. CI-build hardware validation pending; see RUMBLE.md. |
 
 ## Emulators
 

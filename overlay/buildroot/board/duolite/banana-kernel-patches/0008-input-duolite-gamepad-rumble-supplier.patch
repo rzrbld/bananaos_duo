@@ -1,0 +1,352 @@
+Subject: input: connect Duo Lite gamepad FF to its Awinic haptic supplier
+
+Opt in with a DT phandle, expose standard FF_RUMBLE on the existing gamepad,
+and retain Awinic ownership of I2C work and the global rumble/suspend gate.
+A device link orders suspend and unbind; the supplier module stays referenced.
+No app files, gamepad identity or button mappings are changed.
+
+--- a/drivers/input/misc/aw86927.c
++++ b/drivers/input/misc/aw86927.c
+@@ -13,6 +13,9 @@
+ #include <linux/gpio/consumer.h>
+ #include <linux/i2c.h>
+ #include <linux/input.h>
++#include <linux/input/aw86927.h>
++#include <linux/pm.h>
++#include <linux/spinlock.h>
+ #include <linux/module.h>
+ #include <linux/regmap.h>
+ #include <linux/regulator/consumer.h>
+@@ -194,6 +197,9 @@
+ 	struct regmap *regmap;
+ 	struct gpio_desc *reset_gpio;
+ 	u16 level;
++	u16 direct_level, gamepad_level;
++	spinlock_t control_lock;
++	bool ready, rumble_enabled, suspended;
+ };
+ 
+ static const struct regmap_config aw86927_regmap_config = {
+@@ -329,25 +335,83 @@
+ 	return 0;
+ }
+ 
++/* No I2C here: memless callbacks run under the input event spinlock. */
++static void aw86927_set_level(struct aw86927_data *haptics, bool gamepad, u16 level)
++{
++	unsigned long flags;
++	u16 combined;
++
++	spin_lock_irqsave(&haptics->control_lock, flags);
++	if (!haptics->rumble_enabled || haptics->suspended)
++		level = 0;
++	if (gamepad)
++		haptics->gamepad_level = level;
++	else
++		haptics->direct_level = level;
++	combined = max(haptics->direct_level, haptics->gamepad_level);
++	if (haptics->level != combined) {
++		WRITE_ONCE(haptics->level, combined);
++		schedule_work(&haptics->play_work);
++	}
++	spin_unlock_irqrestore(&haptics->control_lock, flags);
++}
++
++int aw86927_rumble(struct device *dev, u16 strong, u16 weak)
++{
++	struct aw86927_data *haptics = dev_get_drvdata(dev);
++
++	if (!haptics || !READ_ONCE(haptics->ready))
++		return -EPROBE_DEFER;
++	aw86927_set_level(haptics, true, max(strong, weak));
++	return 0;
++}
++EXPORT_SYMBOL_GPL(aw86927_rumble);
++
+ static int aw86927_haptics_play(struct input_dev *dev, void *data, struct ff_effect *effect)
+ {
+ 	struct aw86927_data *haptics = input_get_drvdata(dev);
+-	int level;
+-
+-	level = effect->u.rumble.strong_magnitude;
+-	if (!level)
+-		level = effect->u.rumble.weak_magnitude;
+-
+-	/* If level does not change, don't restart playback */
+-	if (haptics->level == level)
+-		return 0;
+-
+-	haptics->level = level;
+-
+-	schedule_work(&haptics->play_work);
+-
+-	return 0;
+-}
++
++	aw86927_set_level(haptics, false, max(effect->u.rumble.strong_magnitude,
++					    effect->u.rumble.weak_magnitude));
++	return 0;
++}
++
++static ssize_t rumble_enabled_show(struct device *dev, struct device_attribute *attr, char *buf)
++{
++	struct aw86927_data *haptics = dev_get_drvdata(dev);
++
++	return sysfs_emit(buf, "%u\n", READ_ONCE(haptics->rumble_enabled));
++}
++
++static ssize_t rumble_enabled_store(struct device *dev, struct device_attribute *attr,
++				   const char *buf, size_t count)
++{
++	struct aw86927_data *haptics = dev_get_drvdata(dev);
++	unsigned long flags;
++	bool enabled;
++	int err = kstrtobool(buf, &enabled);
++
++	if (err)
++		return err;
++	spin_lock_irqsave(&haptics->control_lock, flags);
++	haptics->rumble_enabled = enabled;
++	if (!enabled) {
++		haptics->direct_level = haptics->gamepad_level = 0;
++		WRITE_ONCE(haptics->level, 0);
++		schedule_work(&haptics->play_work);
++	}
++	spin_unlock_irqrestore(&haptics->control_lock, flags);
++	if (!enabled)
++		flush_work(&haptics->play_work);
++	return count;
++}
++static DEVICE_ATTR_RW(rumble_enabled);
++
++static struct attribute *aw86927_attrs[] = {
++	&dev_attr_rumble_enabled.attr,
++	NULL,
++};
++ATTRIBUTE_GROUPS(aw86927);
+ 
+ static int aw86927_play_sine(struct aw86927_data *haptics)
+ {
+@@ -390,7 +454,7 @@
+ 	if (err)
+ 		return err;
+ 
+-	err = regmap_write(haptics->regmap, AW86927_PLAYCFG2_REG, haptics->level * 0x80 / 0xffff);
++	err = regmap_write(haptics->regmap, AW86927_PLAYCFG2_REG, READ_ONCE(haptics->level) * 0x80 / 0xffff);
+ 	if (err)
+ 		return err;
+ 
+@@ -405,14 +469,10 @@
+ static void aw86927_close(struct input_dev *input)
+ {
+ 	struct aw86927_data *haptics = input_get_drvdata(input);
+-	struct device *dev = &haptics->client->dev;
+-	int err;
+-
+-	cancel_work_sync(&haptics->play_work);
+-
+-	err = aw86927_stop(haptics);
+-	if (err)
+-		dev_err(dev, "Failed to close the Driver: %d\n", err);
++
++	/* Closing the standalone haptic node must not cancel a gamepad effect. */
++	aw86927_set_level(haptics, false, 0);
++	flush_work(&haptics->play_work);
+ }
+ 
+ static void aw86927_haptics_play_work(struct work_struct *work)
+@@ -422,7 +482,7 @@
+ 	struct device *dev = &haptics->client->dev;
+ 	int err;
+ 
+-	if (haptics->level)
++	if (READ_ONCE(haptics->level))
+ 		err = aw86927_play_sine(haptics);
+ 	else
+ 		err = aw86927_stop(haptics);
+@@ -770,6 +830,8 @@
+ 	if (!haptics)
+ 		return -ENOMEM;
+ 
++	spin_lock_init(&haptics->control_lock);
++	haptics->rumble_enabled = true;
+ 	haptics->dev = &client->dev;
+ 	haptics->client = client;
+ 
+@@ -857,7 +919,43 @@
+ 	if (err)
+ 		return dev_err_probe(haptics->dev, err, "Failed to register input device\n");
+ 
+-	return 0;
++	WRITE_ONCE(haptics->ready, true);
++
++	return 0;
++}
++
++static int aw86927_suspend(struct device *dev)
++{
++	struct aw86927_data *haptics = dev_get_drvdata(dev);
++	unsigned long flags;
++
++	spin_lock_irqsave(&haptics->control_lock, flags);
++	haptics->suspended = true;
++	haptics->direct_level = haptics->gamepad_level = 0;
++	WRITE_ONCE(haptics->level, 0);
++	spin_unlock_irqrestore(&haptics->control_lock, flags);
++	cancel_work_sync(&haptics->play_work);
++	return aw86927_stop(haptics);
++}
++
++static int aw86927_resume(struct device *dev)
++{
++	struct aw86927_data *haptics = dev_get_drvdata(dev);
++	unsigned long flags;
++
++	spin_lock_irqsave(&haptics->control_lock, flags);
++	haptics->suspended = false;
++	spin_unlock_irqrestore(&haptics->control_lock, flags);
++	return 0;
++}
++static DEFINE_SIMPLE_DEV_PM_OPS(aw86927_pm_ops, aw86927_suspend, aw86927_resume);
++
++static void aw86927_remove(struct i2c_client *client)
++{
++	struct aw86927_data *haptics = i2c_get_clientdata(client);
++
++	WRITE_ONCE(haptics->ready, false);
++	aw86927_suspend(&client->dev);
+ }
+ 
+ static const struct of_device_id aw86927_of_id[] = {
+@@ -871,8 +969,11 @@
+ 	.driver = {
+ 		.name = "aw86927-haptics",
+ 		.of_match_table = aw86927_of_id,
++		.dev_groups = aw86927_groups,
++		.pm = pm_sleep_ptr(&aw86927_pm_ops),
+ 	},
+ 	.probe = aw86927_probe,
++	.remove = aw86927_remove,
+ };
+ 
+ module_i2c_driver(aw86927_driver);
+--- /dev/null
++++ b/include/linux/input/aw86927.h
+@@ -0,0 +1,8 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++#ifndef _LINUX_INPUT_AW86927_H
++#define _LINUX_INPUT_AW86927_H
++#include <linux/types.h>
++struct device;
++/* Atomic-safe producer; the supplier owns work, policy and sleep handling. */
++int aw86927_rumble(struct device *dev, u16 strong, u16 weak);
++#endif
+--- a/drivers/input/joystick/rsinput.c
++++ b/drivers/input/joystick/rsinput.c
+@@ -10,6 +10,8 @@
+ #include <linux/gpio/consumer.h>
+ #include <linux/init.h>
+ #include <linux/input.h>
++#include <linux/input/aw86927.h>
++#include <linux/i2c.h>
+ #include <linux/kernel.h>
+ #include <linux/module.h>
+ #include <linux/minmax.h>
+@@ -127,6 +129,8 @@
+ struct rsinput_driver {
+     struct serdev_device *serdev;
+     struct input_dev *input;
++    struct device *haptics;
++    int (*play_rumble)(struct device *, u16, u16);
+     struct regulator *vdd;
+     struct gpio_desc *boot_gpio;
+     struct gpio_desc *enable_gpio;
+@@ -518,6 +522,53 @@
+     schedule_delayed_work(&drv->rx_watchdog, delay);
+ }
+ 
++static int rsinput_play_rumble(struct input_dev *input, void *data, struct ff_effect *effect)
++{
++    struct rsinput_driver *drv = input_get_drvdata(input);
++
++    return drv->play_rumble(drv->haptics, effect->u.rumble.strong_magnitude,
++                            effect->u.rumble.weak_magnitude);
++}
++
++static void rsinput_release_haptics(void *data)
++{
++    struct rsinput_driver *drv = data;
++
++    drv->play_rumble(drv->haptics, 0, 0);
++    symbol_put(aw86927_rumble);
++    put_device(drv->haptics);
++}
++
++static int rsinput_setup_haptics(struct rsinput_driver *drv, struct device *dev)
++{
++    struct device_node *node;
++    struct i2c_client *client;
++    int err;
++
++    node = of_parse_phandle(dev->of_node, "banana,haptics", 0);
++    if (!node)
++        return 0;
++    client = of_find_i2c_device_by_node(node);
++    of_node_put(node);
++    if (!client)
++        return -EPROBE_DEFER;
++    drv->haptics = &client->dev;
++    drv->play_rumble = symbol_request(aw86927_rumble);
++    if (!drv->play_rumble) {
++        put_device(drv->haptics);
++        return -EPROBE_DEFER;
++    }
++    err = devm_add_action_or_reset(dev, rsinput_release_haptics, drv);
++    if (err)
++        return err;
++    err = drv->play_rumble(drv->haptics, 0, 0);
++    if (err)
++        return err;
++    if (!device_link_add(dev, drv->haptics, DL_FLAG_AUTOREMOVE_CONSUMER))
++        return -ENOMEM;
++    return 0;
++}
++
+ static int rsinput_probe(struct serdev_device *serdev) {
+     struct rsinput_driver *drv;
+     u32 gamepad_bus = 0;
+@@ -529,6 +580,10 @@
+     drv = devm_kzalloc(&serdev->dev, sizeof(*drv), GFP_KERNEL);
+     if (!drv)
+     return -ENOMEM;
++
++    error = rsinput_setup_haptics(drv, &serdev->dev);
++    if (error)
++        return dev_err_probe(&serdev->dev, error, "Haptic supplier unavailable\n");
+ 
+     drv->invert_x = device_property_present(&serdev->dev, "invert-x");
+     drv->invert_y = device_property_present(&serdev->dev, "invert-y");
+@@ -665,6 +720,14 @@
+         input_set_abs_params(drv->input, ABS_RZ, 0, trigger_right_max - trigger_right_antideadzone, 0, 30);
+     }
+ 
++    input_set_drvdata(drv->input, drv);
++    if (drv->play_rumble) {
++        input_set_capability(drv->input, EV_FF, FF_RUMBLE);
++        error = input_ff_create_memless(drv->input, NULL, rsinput_play_rumble);
++        if (error)
++            return error;
++    }
++
+     error = input_register_device(drv->input);
+     if (error)
+         return error;
+@@ -702,6 +765,8 @@
+     struct rsinput_driver *drv = dev_get_drvdata(dev);
+ 
+     cancel_delayed_work_sync(&drv->rx_watchdog);
++    if (drv->play_rumble)
++        drv->play_rumble(drv->haptics, 0, 0);
+     return 0;
+ }
+ 
