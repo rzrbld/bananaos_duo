@@ -1442,7 +1442,7 @@ index 15acf19b..6907046b 100644
  fi
  
 diff --git a/ui/Makefile b/ui/Makefile
-index e282ab1d..d44a5ab6 100644
+index e282ab1d..18fab2bb 100644
 --- a/ui/Makefile
 +++ b/ui/Makefile
 @@ -8,7 +8,7 @@ CXXFLAGS ?= -O2
@@ -1474,10 +1474,14 @@ index e282ab1d..d44a5ab6 100644
  
  # box art, title screens, genres and years from libretro's free collections (Settings and the first-time setup)
  banana-scrape: src/scrape.cpp
-@@ -85,6 +94,18 @@ libasound_module_pcm_banana_eq.so: src/eq/pcm_banana_eq.c src/eq/eq.h
+@@ -85,6 +94,22 @@ libasound_module_pcm_banana_eq.so: src/eq/pcm_banana_eq.c src/eq/eq.h
  host:
  	$(MAKE) ALSA=0 banana-ui
  
++# Render real Settings pages at unequal panel sizes (isolated fixtures only).
++tests/settings-layout-test: tests/settings-layout-test.cpp $(filter-out src/main.cpp,$(SRC)) $(STOCK_OBJ) $(RC_OBJ) $(wildcard src/*.h rnds/*.h)
++	$(CXX) $(CXXFLAGS) $(UI_FLAGS) $(LDFLAGS) -o $@ tests/settings-layout-test.cpp $(filter-out src/main.cpp,$(SRC)) $(RC_OBJ) $(STOCK_OBJ) $(UI_LIBS) $(LDLIBS)
++
 +tests/plane-selection-test: tests/plane-selection-test.cpp src/plane-selection.h
 +	$(CXX) $(CXXFLAGS) -Isrc -o $@ $<
 +
@@ -1493,7 +1497,7 @@ index e282ab1d..d44a5ab6 100644
  # the Pokémon companion's decoder on data made from the documented layouts (tests/run.sh runs it)
  tests/pokemon-test: tests/pokemon-test.cpp src/pokemon.cpp src/pokemap.cpp src/pokemon.h src/zip.cpp src/zipdir.cpp
  	$(CXX) $(CXXFLAGS) -Isrc -o $@ tests/pokemon-test.cpp src/pokemon.cpp src/pokemap.cpp src/zip.cpp src/zipdir.cpp -lz -lpthread
-@@ -147,6 +168,7 @@ install:
+@@ -147,6 +172,7 @@ install:
  	touch $(DESTDIR)/usr/share/banana/apps/files/Files.app
  
  clean:
@@ -1502,7 +1506,7 @@ index e282ab1d..d44a5ab6 100644
  	rm -f banana-ui banana-leaseshim.so libasound_module_pcm_banana_eq.so banana-scrape banana-sync banana-bshare banana-fetch tests/pokemon-test tests/gamecomp-test tests/input-test tests/wav-test tests/eq-test tests/lang-raw-test tests/lang-test tests/complink-test tests/nds-pages-test tests/nds-rom-test tests/nds-rom-dump tests/nds-ram-test tests/nds-logic-test tests/nds-romfile-test tests/nds-townmap-test tests/gba-live-test tests/gba-pages-test tests/gba-rom-test tests/gba-items-gen tests/soft-base-test tests/gba-exp-test tests/gba-expitems-gen tests/gba-hidden-items tests/ach-test
  
 diff --git a/ui/rnds/RndsUI.cpp b/ui/rnds/RndsUI.cpp
-index d9eeb177..08fe51d4 100644
+index d9eeb177..0b21beb8 100644
 --- a/ui/rnds/RndsUI.cpp
 +++ b/ui/rnds/RndsUI.cpp
 @@ -513,13 +513,18 @@ namespace rnds
@@ -1529,7 +1533,7 @@ index d9eeb177..08fe51d4 100644
  			b.shadows = { inset(0, 6, 0, P.sheetHi), inset(0, -8, 0, P.sheetLo), outer(4, 4, SHADE40) };
  			return b;
  		}
-+		float topWidth() const { int w = be->screenWidth(0); return w > 0 ? w / s : 640.0f; }
++		float topWidth() const { return be->layoutWidth(0, s); }
 +
  		void drawSheet(const Color& accent, float x, float y)
  		{
@@ -1644,18 +1648,198 @@ index d9eeb177..08fe51d4 100644
  					Sprite c = cart(CartArt{ sy.resumeCart, sy.resumeLabel, sy.resumeBox, "", sy.icon }, 54, 56);
  					drawSprite(c, cx + 11, cy + 9);
 diff --git a/ui/rnds/RndsUI.h b/ui/rnds/RndsUI.h
-index f50f0100..3a8a1bfb 100644
+index f50f0100..f5768fac 100644
 --- a/ui/rnds/RndsUI.h
 +++ b/ui/rnds/RndsUI.h
-@@ -105,6 +105,8 @@ namespace rnds
+@@ -105,6 +105,18 @@ namespace rnds
  	{
  	public:
  		virtual ~Backend() {}
 +		// Optional native canvas size; older equal-panel backends keep 640 CSS px.
 +		virtual int screenWidth(int /*screen*/) const { return 0; }
++		// Geometry for the panel currently being painted, in height-scaled layout
++		// units. A panel's width is independent of the other panel's aspect ratio.
++		virtual int currentScreen() const { return 0; }
++		float layoutWidth(int screen, float scale) const {
++			const int width = screenWidth(screen);
++			return width > 0 && scale > 0 ? width / scale : 640.0f;
++		}
++		float layoutWidth(float scale) const { return layoutWidth(currentScreen(), scale); }
++		float centeredX(float width, float scale) const { return (layoutWidth(scale) - width) / 2; }
++
  		virtual TexPtr upload(const Bitmap& b, bool smooth) = 0;
  		// device pixels of the current screen; tint multiplies (alpha textures take its colour)
  		virtual void draw(const TexPtr& t, float x, float y, float w, float h, const Color& tint) = 0;
+diff --git a/ui/src/arrival.cpp b/ui/src/arrival.cpp
+index b82e4a2b..e8432362 100644
+--- a/ui/src/arrival.cpp
++++ b/ui/src/arrival.cpp
+@@ -116,8 +116,8 @@ namespace banana
+ 		for (const F& f : list)
+ 		{
+ 			Fruit r;
+-			r.x0 = f.x0; r.vx = f.vx; r.vy = f.vy; r.launch = (float)LAUNCH + f.launch;
+-			r.slotX = f.slotX; r.slotY = f.slotY; r.k = f.k; r.spin = f.spin;
++			r.x0 = f.x0 + W / s / 2 - 320; r.vx = f.vx; r.vy = f.vy; r.launch = (float)LAUNCH + f.launch;
++			r.slotX = f.slotX + W / s / 2 - 320; r.slotY = f.slotY; r.k = f.k; r.spin = f.spin;
+ 			r.sway = i ? 10.0f + 4 * (i % 3) : 0; r.swayRate = 0.0023f + 0.0004f * (i % 4); r.phase = 1.7f * i;
+ 			fruit.push_back(r);
+ 			i++;
+@@ -126,7 +126,7 @@ namespace banana
+ 		stars.clear();
+ 		uint32_t seed = 0x8a5c3d1u;
+ 		auto rnd = [&seed]() { seed = seed * 1664525u + 1013904223u; return (seed >> 8) / 16777216.0f; };
+-		for (int n = 0; n < 110; n++) stars.push_back({ rnd() * 640, rnd() * (BOT_Y + 480), n % 7 == 0 ? 2 : n % 3 == 0 ? 1 : 0 });
++		for (int n = 0; n < 110; n++) stars.push_back({ rnd() * (W / s), rnd() * (BOT_Y + 480), n % 7 == 0 ? 2 : n % 3 == 0 ? 1 : 0 });
+ 		return true;
+ 	}
+ 
+@@ -348,7 +348,7 @@ namespace banana
+ 		// ---- the bottom panel: the zoom into the cartridge, its rumble, then the console left behind ----
+ 		const float zp = smooth(clamp01(t / ZOOM_END));
+ 		const float z = 1 + (ZOOM - 1) * zp;
+-		float cx = X(ANCHOR_X + (320 - ANCHOR_X) * zp), cy = X(ANCHOR_Y + (240 - ANCHOR_Y) * zp);
++		float cx = X(ANCHOR_X + W / s / 2 - 320 + (320 - ANCHOR_X) * zp), cy = X(ANCHOR_Y + (240 - ANCHOR_Y) * zp);
+ 		if (t >= ZOOM_END && t < LAUNCH + 200)
+ 		{
+ 			// the rumble: whole look-pixels left and right, harder towards the burst
+@@ -359,7 +359,7 @@ namespace banana
+ 		}
+ 		const float camDrop = (float)travel(t) * 0.85f;	// the console moves off as fast as the nearest stars
+ 		const int dy = X(camDrop);
+-		if (dy < H) zoomed(bot, startBot, X(ANCHOR_X), X(ANCHOR_Y), cx, cy, z, dy);
++		if (dy < H) zoomed(bot, startBot, X(ANCHOR_X + W / s / 2 - 320), X(ANCHOR_Y), cx, cy, z, dy);
+ 		else std::fill(bot, bot + n, C(SKY));
+ 		if (dy > 0) sky(bot, 1, t);	// (above the console as it goes)
+ 		// the light out of the cartridge's top as it rumbles, then the bananas
+@@ -370,8 +370,8 @@ namespace banana
+ 			int h = (int)std::round(p * 6 + (flick ? 1 : 0)) * u;
+ 			int yTop = X(CART_TOP) + dy;
+ 			uint32_t c = mul255(rnds::tintAccent(0xfffff4aau), t < LAUNCH ? 140 + (flick ? 60 : 0) : 220);
+-			rect(bot, X(320 - 180), yTop - h, X(360), h, c);
+-			if (t >= LAUNCH) rect(bot, X(320 - 150), yTop - h - 3 * u, X(300), 3 * u, mul255(0xffffffffu, 200));
++			rect(bot, X(W / s / 2 - 180), yTop - h, X(360), h, c);
++			if (t >= LAUNCH) rect(bot, X(W / s / 2 - 150), yTop - h - 3 * u, X(300), 3 * u, mul255(0xffffffffu, 200));
+ 		}
+ 
+ 		// ---- the top panel: the boot animation's picture going dark, the sky ----
+diff --git a/ui/src/carts.cpp b/ui/src/carts.cpp
+index d949fa44..9fab4c43 100644
+--- a/ui/src/carts.cpp
++++ b/ui/src/carts.cpp
+@@ -143,7 +143,7 @@ namespace banana
+ 		// soft light of that colour on it too (the chosen art's, behind the top screen's cartridge): an ellipse round
+ 		// (gcx, gcy) with radii grx, gry (device px), at strength ga
+ 		rnds::Bitmap backgroundRect(int screen, uint32_t accent, float s, int x0, int y0, int w, int h, int H,
+-			uint32_t glow = 0, float gcx = 0, float gcy = 0, float grx = 1, float gry = 1, float ga = 0)
++			float panelWidth, uint32_t glow = 0, float gcx = 0, float gcy = 0, float grx = 1, float gry = 1, float ga = 0)
+ 		{
+ 			rnds::Bitmap b;
+ 			b.w = w; b.h = h;
+@@ -153,7 +153,7 @@ namespace banana
+ 			uint32_t light = mix(accent, 0xffffff, 0.35f);
+ 			const float lr = ((light >> 16) & 255) / 255.0f, lg = ((light >> 8) & 255) / 255.0f, lb = (light & 255) / 255.0f;
+ 			const float gr = ((glow >> 16) & 255) / 255.0f, gg = ((glow >> 8) & 255) / 255.0f, gb = (glow & 255) / 255.0f;
+-			const float floorY = screen == 0 ? TOP_FLOOR : SHELF_Y, lx = screen == 0 ? 176 : 320;
++			const float floorY = screen == 0 ? TOP_FLOOR : SHELF_Y, lx = screen == 0 ? panelWidth / 4 + 16 : panelWidth / 2;
+ 			const float wallK = screen == 0 ? 0.10f : 0.07f, poolK = screen == 0 ? 0.09f : 0.08f;
+ 			int dot = std::max(1, (int)std::lround(1.5f * s)), step = (int)std::lround(16 * s);
+ 			// the pools of light and the glow are Gaussians, so each is a column's factor times a row's: the exponentials
+@@ -167,7 +167,7 @@ namespace banana
+ 				wallX[xx] = wallK * std::exp(-dx * dx * 2.0f);
+ 				dx = (u - lx) / 210;
+ 				poolX[xx] = poolK * std::exp(-dx * dx * 1.4f);
+-				float nx = u / 320 - 1;
++				float nx = u / (panelWidth / 2) - 1;
+ 				vigX[xx] = nx * nx * 0.85f;
+ 				dotX[xx] = (x0 + xx) % step < dot;
+ 				if (ga > 0) { float gx = (x0 + xx + 0.5f - gcx) / grx; glowX[xx] = std::exp(-gx * gx * 3.2f); }
+@@ -570,8 +570,8 @@ namespace banana
+ 		{
+ 			// a screen's background in a colour not seen yet (tens of milliseconds: not on the main thread)
+ 			CartTex ct;
+-			int H = (int)std::lround(480 * s), W = (int)std::lround(640 * s);
+-			ct.tex = be->upload(backgroundRect(j.back, j.accent, s, 0, 0, W, H, H), false);	// made a texture here, as walls are
++			int H = (int)std::lround(480 * s), W = (int)std::lround(be->layoutWidth(j.back, s) * s);
++			ct.tex = be->upload(backgroundRect(j.back, j.accent, s, 0, 0, W, H, H, W / s), false);	// made a texture here, as walls are
+ 			{
+ 				std::lock_guard<std::mutex> l(jm);
+ 				doneTex.push_back({ j.key, std::move(ct) });
+@@ -583,11 +583,11 @@ namespace banana
+ 		{
+ 			// a piece of the top screen's wall with the chosen art's light baked in (drawn as a plain copy)
+ 			CartTex ct;
+-			int H = (int)std::lround(480 * s), W = (int)std::lround(640 * s);
+-			float gcx = 176 * s, gcy = (TOP_FLOOR - j.heroH * 0.52f) * s, grx = 230 * s, gry = 190 * s;
++			int H = (int)std::lround(480 * s), W = (int)std::lround(be->layoutWidth(0, s) * s);
++			float gcx = (be->layoutWidth(0, s) / 4 + 16) * s, gcy = (TOP_FLOOR - j.heroH * 0.52f) * s, grx = 230 * s, gry = 190 * s;
+ 			int x0 = std::max(0, (int)std::floor(gcx - grx)), y0 = std::max(0, (int)std::floor(gcy - gry));
+ 			int x1 = std::min(W, (int)std::ceil(gcx + grx)), y1 = std::min(H, (int)std::ceil(gcy + gry));
+-			ct.tex = be->upload(backgroundRect(0, j.accent, s, x0, y0, x1 - x0, y1 - y0, H, j.glow, gcx, gcy, grx, gry, 0.17f), false);
++			ct.tex = be->upload(backgroundRect(0, j.accent, s, x0, y0, x1 - x0, y1 - y0, H, W / s, j.glow, gcx, gcy, grx, gry, 0.17f), false);
+ 			ct.reflTop = x0; ct.glow = (uint32_t)y0;	// (where it goes)
+ 			{
+ 				std::lock_guard<std::mutex> l(jm);
+@@ -768,7 +768,7 @@ namespace banana
+ 
+ 	bool CartMenu::background(int screen, uint32_t accent)
+ 	{
+-		int W = (int)std::lround(X(640)), H = (int)std::lround(X(480));
++		int W = (int)std::lround(X(be->layoutWidth(screen, s))), H = (int)std::lround(X(480));
+ 		std::string key = std::to_string(screen) + ":" + std::to_string(accent);
+ 		auto it = backs.find(key);
+ 		if (it == backs.end())
+@@ -790,7 +790,7 @@ namespace banana
+ 			else
+ 			{
+ 				if (backs.size() > 12) backs.clear();
+-				it = backs.emplace(key, be->upload(backgroundRect(screen, accent, s, 0, 0, W, H, H), false)).first;
++				it = backs.emplace(key, be->upload(backgroundRect(screen, accent, s, 0, 0, W, H, H, W / s), false)).first;
+ 			}
+ 		}
+ 		const rnds::TexPtr& t = it != backs.end() ? it->second : lastBack[screen];
+@@ -809,11 +809,12 @@ namespace banana
+ 	void CartMenu::drawTop()
+ 	{
+ 		be->beginScreen(0);
++		const float width = be->layoutWidth(0, s);
+ 		if (count() == 0)
+ 		{
+ 			background(0, 0x4a8af0);
+-			text("No games yet", fBold, 30, 320, 200, INK, 1, 0, 1);
+-			text(src->emptyHint(), fReg, 16, 320, 244, SOFT, 1, 560, 1);
++			text("No games yet", fBold, 30, width / 2, 200, INK, 1, 0, 1);
++			text(src->emptyHint(), fReg, 16, width / 2, 244, SOFT, 1, width - 80, 1);
+ 			be->endScreen();
+ 			return;
+ 		}
+@@ -824,7 +825,7 @@ namespace banana
+ 		std::string right = src->clockText();
+ 		float bat = src->battery();
+ 		if (bat >= 0) right += std::string(src->charging() ? "   Charging " : "   ") + std::to_string((int)std::lround(bat * 100)) + "%";
+-		text(right, fMed, 14, 618, 16, SOFT, 1, 0, 2);
++		text(right, fMed, 14, width - 22, 16, SOFT, 1, 0, 2);
+ 		// the cartridge, sliding in from the side it came from; it drops away when the game starts
+ 		float e = ease((float)((now - heroAt) / 280.0));
+ 		float dx = (1 - e) * 36 * heroDir, dy = 0, alpha = 0.35f + 0.65f * e;
+@@ -833,7 +834,7 @@ namespace banana
+ 			float t = (float)((now - launchAt) / 560.0);
+ 			dy = t * t * 520;
+ 		}
+-		float cx = 176 + dx;
++		float cx = width / 4 + 16 + dx;
+ 		// as tall as HERO_H, or narrower for a wide cartridge (an N64's, a SNES's): it stays left of the words
+ 		float heroH = std::min(HERO_H, 285 / (cartAspect(it.system) * 1.12f));
+ 		const CartTex* hero = cart(it, (int)std::lround(X(heroH)), -28, 9);
+@@ -870,7 +871,7 @@ namespace banana
+ 		shadow(cx, TOP_FLOOR + 2, footW * 0.78f, 0.55f * alpha * (falling ? std::max(0.0f, 1 - dy / 40) : 1));	// (where it touches)
+ 		if (hero) drawCart(*hero, cx, TOP_FLOOR + dy, 0, 1, alpha, !falling);
+ 		// the words, right of it
+-		float x = 336, w = 282, y = 98;
++		float x = width / 2 + 16, w = width - x - 22, y = 98;
+ 		text(it.eyebrow, fSemi, 13, x, y, mix(it.accent, 0xffffff, 0.45f), 1, w, 0, 1.4f, true);
+ 		y += 26;
+ 		if (fBold)	// (no fonts: no words, rather than a crash)
 diff --git a/ui/src/kms.cpp b/ui/src/kms.cpp
 index 4a989cce..404fdaa2 100644
 --- a/ui/src/kms.cpp
@@ -1926,6 +2110,28 @@ index 351a9898..e7f8d6a7 100644
  		bool lightBoth();
  		void freeBuf(Buf& b);
  	};
+diff --git a/ui/src/layout.cpp b/ui/src/layout.cpp
+index 35c83b02..7f7cb701 100644
+--- a/ui/src/layout.cpp
++++ b/ui/src/layout.cpp
+@@ -1432,11 +1432,14 @@ namespace banana
+ 			smoothMoving = false;
+ 			Scope root;
+ 			root.resolve = [this](const std::string& n, EV& out) { return hook(n, out); };
+-			Scope vs;
+-			vs.parent = &root;
+-			for (auto& v : vars) vs.set(v.first, v.second.eval(vs));
+ 			for (int screen = 0; screen < 2; screen++)
+ 			{
++				W = m->be->layoutWidth(screen, s);
++				// Variables using W (centres, right edges and column widths) must
++				// be evaluated separately for each panel, before drawing its tree.
++				Scope vs;
++				vs.parent = &root;
++				for (auto& v : vars) vs.set(v.first, v.second.eval(vs));
+ 				const char* side = screen == 0 ? "top" : "bottom";
+ 				m->be->beginScreen(screen);
+ 				Scope ss;
 diff --git a/ui/src/main.cpp b/ui/src/main.cpp
 index 65a057ed..e22517f9 100644
 --- a/ui/src/main.cpp
@@ -2438,7 +2644,7 @@ index 65a057ed..e22517f9 100644
  		logf("shutdown animation");
  		playOutro(disp, be, o, variant, sound);
 diff --git a/ui/src/settings.cpp b/ui/src/settings.cpp
-index ee1ceffb..92186ad0 100644
+index ee1ceffb..3189a0b1 100644
 --- a/ui/src/settings.cpp
 +++ b/ui/src/settings.cpp
 @@ -373,7 +373,7 @@ namespace banana
@@ -2731,8 +2937,55 @@ index ee1ceffb..92186ad0 100644
  		if (page == SPEAKEREQ) return touchEq(cx, cy);
  		if (page == THEMES) return touchThemes(cx, cy);
  		if (page == CREDITS) { if (downY >= 418 && downY <= 466 && downX < 320) return pressCredits(Key::B); return NONE; }
-@@ -2145,7 +2192,7 @@ namespace banana
- 		else if (!body.empty()) text(fit(body, false, 18, 540), false, 18, 78, 38, lightText);
+@@ -2098,7 +2145,8 @@ namespace banana
+ 	void Settings::notice(const std::string& title, const std::string& body, int percent)
+ 	{
+ 		SPal p = pal(light);
+-		box("bubble", false, 40, 344, 560, 104);
++		const float offset = centeredX(640);
++		box("bubble", false, 40 + offset, 344, 560, 104);
+ 		// the status bar's battery, three times its size on the same pixel grid, its level red at 10% and under
+ 		auto it = cache.find("battery");
+ 		if (it == cache.end())
+@@ -2110,14 +2158,14 @@ namespace banana
+ 		}
+ 		keep(it);
+ 		int k = std::max(1, (int)std::lround(3 * s));
+-		float bx = std::round(X(66)), by = std::round(X(375));
++		float bx = std::round(X(66 + offset)), by = std::round(X(375));
+ 		if (it->second.tex)
+ 			be->draw(it->second.tex, bx, by, (float)it->second.tex->w * k, (float)it->second.tex->h * k, p.ink);
+ 		int lv = percent <= 0 ? 0 : std::max(1, (int)std::lround(16 * std::min(100, percent) / 100.0f));
+ 		Color lc = percent <= 10 ? (light ? Color::hex(0xc8382d) : Color::hex(0xff5a4f)) : p.accent;
+ 		if (lv > 0) be->fill(bx + 3 * k, by + 3 * k, (float)lv * k, (float)8 * k, lc);
+-		text(title, true, 22, 172, 360, p.ink);
+-		wrapped(body, 18, 172, 392, 404, 2, p.muted);
++		text(title, true, 22, 172 + offset, 360, p.ink);
++		wrapped(body, 18, 172 + offset, 392, 404, 2, p.muted);
+ 	}
+ 
+ 	void Settings::banner(const std::string& title, const std::string& body, int sign, uint32_t accent)
+@@ -2130,8 +2178,8 @@ namespace banana
+ 			{ "##.....##", ".##...##.", "..##.##..", "...###...", "...###...", "..##.##..", ".##...##.", "##.....##", "........." },
+ 			{ "...##....", "...##....", "...##....", "...##....", "...##....", "...##....", ".........", "...##....", "...##...." } };
+ 		const Color lightText = Color::hex(0xf1ede2), acc = Color::hex(accent);
+-		bool two = !body.empty() && text(body, false, 18, 0, 0, lightText, false, 0, true) > 536;
+-		box("osd", false, 8, 4, 624, two ? 86 : 64);
++		bool two = !body.empty() && text(body, false, 18, 0, 0, lightText, false, 0, true) > canvasWidth() - 104;
++		box("osd", false, 8, 4, canvasWidth() - 16, two ? 86 : 64);
+ 		float bs = 48, tx = 16, ty = 12;
+ 		be->fill(std::round(X(tx)), std::round(X(ty)), std::round(X(bs)), std::round(X(bs)), acc);
+ 		int k = std::max(1, (int)std::lround(X(bs) / 14));
+@@ -2140,12 +2188,12 @@ namespace banana
+ 			for (int r = 0; r < 9; r++)
+ 				for (int c = 0; c < 9; c++)
+ 					if (SIGN[sign][r][c] == '#') be->fill(std::round(ox + c * k), std::round(oy + r * k), (float)k, (float)k, Color::hex(0x12181f));
+-		text(fit(title, true, 17, 540), true, 17, 78, 14, acc);
+-		if (two) wrapped(body, 18, 78, 37, 536, 2, lightText);
+-		else if (!body.empty()) text(fit(body, false, 18, 540), false, 18, 78, 38, lightText);
++		text(fit(title, true, 17, canvasWidth() - 100), true, 17, 78, 14, acc);
++		if (two) wrapped(body, 18, 78, 37, canvasWidth() - 104, 2, lightText);
++		else if (!body.empty()) text(fit(body, false, 18, canvasWidth() - 100), false, 18, 78, 38, lightText);
  	}
  
 -	void Settings::level(const std::string& label, int percent)
@@ -2740,17 +2993,17 @@ index ee1ceffb..92186ad0 100644
  	{
  		// ROCKNIXDS's volume indicator (SuperDrastic's ui.c render_volume), in the same place: a pill at the top of the
  		// top panel, a speaker (crossed out at 0) or a sun, the in-game menu's 10-segment bar and the percent
-@@ -2158,7 +2205,8 @@ namespace banana
+@@ -2158,7 +2206,8 @@ namespace banana
  		percent = std::min(100, std::max(0, percent));
  		bool sun = label == "Brightness";
  		const Color light = Color::hex(0xf1ede2), bar = Color::hex(0xffe68a), off = Color::hex(0x3a3540), red = Color::hex(0xff8a96);
 -		const float w = 310, h = 42, x0 = (640 - w) / 2, y0 = 4, x1 = x0 + w, cy = y0 + h / 2;
-+		const float canvas = be->screenWidth(screen) > 0 ? be->screenWidth(screen) / s : 640.0f;
++		const float canvas = panelWidth(screen);
 +		const float w = 310, h = 42, x0 = (canvas - w) / 2, y0 = 4, x1 = x0 + w, cy = y0 + h / 2;
  		box("osd", false, x0, y0, w, h);
  		int k = std::max(2, (int)std::lround(2 * s));	// device px per icon pixel
  		const char* const* ic = sun ? SUN : percent <= 0 ? MUTE : VOL;
-@@ -2244,8 +2292,8 @@ namespace banana
+@@ -2244,8 +2293,8 @@ namespace banana
  		const Item& first = items[groupStart(g0)];
  
  		be->beginScreen(0);
@@ -2761,7 +3014,21 @@ index ee1ceffb..92186ad0 100644
  		icon(groupIcon[first.section], 50, 56, 3);
  		text("Settings", true, 17, 170, 62, p.muted, true, 1.4f);
  		text(groups[g0], true, 30, 170, 88, p.ink);
-@@ -2308,7 +2356,8 @@ namespace banana
+@@ -2254,11 +2303,11 @@ namespace banana
+ 		text(n, true, 22, 170, 130, p.accent);
+ 		std::string all;
+ 		for (int i = groupStart(g0); i < groupEnd(g0); i++) all += (all.empty() ? "" : ", ") + lang::tr(items[i].label);
+-		wrapped(all + ".", 20, 50, 196, 540, 7, p.muted);
++		wrapped(all + ".", 20, 50, 196, canvasWidth() - 100, 7, p.muted);
+ 		be->endScreen();
+ 
+ 		be->beginScreen(1);
+-		box("screen", false, 0, 0, 640, 480);
++		box("screen", false, 0, 0, canvasWidth(), 480);
+ 		box("bubble", false, 18, 14, 604, 54);
+ 		text("Settings", true, 22, 38, 28, p.ink);
+ 		const char* sub = "Choose a group";
+@@ -2308,7 +2357,8 @@ namespace banana
  		if (cur.key == "wifi") help = "Wi-Fi: " + wifiInfo + ". Network, below, joins one; networks can also be written in banana/wifi.conf on a computer (see banana/README.txt).";
  		if (cur.key == "ssh")
  			help = "For working on Banana itself: ssh root@" + (ip.empty() ? std::string("<address>") : ip) +
@@ -2771,7 +3038,7 @@ index ee1ceffb..92186ad0 100644
  		if (cur.key == "hs_server")
  		{
  			std::string n = homeServer();
-@@ -2373,7 +2422,7 @@ namespace banana
+@@ -2373,7 +2423,7 @@ namespace banana
  		{
  			st.size = z;
  			size = z;
@@ -2780,7 +3047,7 @@ index ee1ceffb..92186ad0 100644
  			if ((lines - 1) * std::round(z * 1.4f) + z * 1.3f <= bottom - top) return true;
  		}
  		return false;
-@@ -2383,7 +2432,7 @@ namespace banana
+@@ -2383,7 +2433,7 @@ namespace banana
  		float z; int n;
  		bool ok = helpFit(t, top, bottom, z, n);
  		int maxLines = ok ? n : std::max(1, (int)((bottom - top - z * 1.3f) / std::round(z * 1.4f)) + 1);
@@ -2789,7 +3056,7 @@ index ee1ceffb..92186ad0 100644
  	}
  
  	int Settings::helpCheck(const std::function<void(const std::string&)>& log)
-@@ -2446,6 +2495,7 @@ namespace banana
+@@ -2446,6 +2496,7 @@ namespace banana
  		if (page == ACHIEVEMENTS) { renderAch(); return; }
  		if (page == ARTPICK) { renderArt(); return; }
  		if (page == COLORS) { renderColors(); return; }
@@ -2797,7 +3064,7 @@ index ee1ceffb..92186ad0 100644
  		if (page == SPEAKEREQ) { renderEq(); return; }
  		if (page == UPDATES) { renderUpdates(); return; }
  		if (page == SETUP) { renderSetup(); return; }
-@@ -2463,8 +2513,8 @@ namespace banana
+@@ -2463,25 +2514,25 @@ namespace banana
  
  		// ---- top: what the selected setting is ----
  		be->beginScreen(0);
@@ -2808,7 +3075,37 @@ index ee1ceffb..92186ad0 100644
  		// the header (icon, section, name, value) kept tight so the help under it has ten lines (user feedback 2026-10-25: the
  		// Shader row's was cut at seven)
  		icon(cur.icon, 50, HEAD_ICON_Y, 3);
-@@ -2646,6 +2696,7 @@ namespace banana
+ 		text(cur.section, true, 17, 170, HEAD_SECTION_Y, p.muted, true, 1.4f);
+-		textFit(cur.label, true, 30, 170, HEAD_LABEL_Y, 420, p.ink, true);
++		textFit(cur.label, true, 30, 170, HEAD_LABEL_Y, canvasWidth() - 220, p.ink, true);
+ 		std::string value = cur.kind == Item::CHOICE || cur.kind == Item::BRIGHTNESS || cur.kind == Item::VOLUME ? cur.names[cur.at] : "";
+-		if (!value.empty()) textFit(value, true, 22, 170, HEAD_VALUE_Y, 420, p.accent, true);
++		if (!value.empty()) textFit(value, true, 22, 170, HEAD_VALUE_Y, canvasWidth() - 220, p.accent, true);
+ 		std::string help = helpOf(sel);
+ 		if (cur.key == "scrape" && scraping())
+ 		{
+ 			wrapped("Fetching covers and title screens. The menu shows them as they come, and it carries on if you leave this screen.", 20, HELP_X, HELP_TOP, HELP_W, 4, p.muted);
+-			scrapeBar(50, 330, 540);
++			scrapeBar(50, 330, canvasWidth() - 100);
+ 		}
+ 		else if (cur.key == "hs_sync" && syncing())
+ 		{
+ 			wrapped("Syncing with " + (homeServer().empty() ? std::string("the server") : homeServer()) + ". It carries on if you leave this screen; the library shows the new games when it's done.", 20, HELP_X, HELP_TOP, HELP_W, 4, p.muted);
+-			syncBar(50, 330, 540);
++			syncBar(50, 330, canvasWidth() - 100);
+ 		}
+ 		else if (cur.kind == Item::CHOICE && cur.at < (int)cur.hints.size() && !cur.hints[cur.at].empty())
+ 		{
+@@ -2494,7 +2545,7 @@ namespace banana
+ 
+ 		// ---- bottom: the list ----
+ 		be->beginScreen(1);
+-		box("screen", false, 0, 0, 640, 480);
++		box("screen", false, 0, 0, canvasWidth(), 480);
+ 		box("bubble", false, 18, 14, 604, 54);
+ 		// the count only when the group has more rows than the five in view (it is the only sign of the others)
+ 		float titleW = 564;
+@@ -2646,6 +2697,7 @@ namespace banana
  	{
  		now = t;
  		if (!mOpen) return false;
@@ -2816,7 +3113,7 @@ index ee1ceffb..92186ad0 100644
  		bool scrapeChanged = pollScrape(t);
  		scrapeChanged |= pollSync(t);
  		scrapeChanged |= pollPickGames();
-@@ -2811,6 +2862,7 @@ namespace banana
+@@ -2811,6 +2863,7 @@ namespace banana
  
  	int Settings::pageWake(double t) const
  	{
@@ -2824,7 +3121,7 @@ index ee1ceffb..92186ad0 100644
  		if (scanJob.running() || statusJob.running() || artJob.running() || checkJob.running() || volJob.running() || betaJob.running()) return 100;
  		if (btListJob.running() || btScanJob.running() || btActJob.running()) return 100;
  		if (pickLoading) return 150;	// (Choose games: the server's list as it comes)
-@@ -3098,8 +3150,8 @@ namespace banana
+@@ -3098,23 +3151,23 @@ namespace banana
  		SPal p = pal(light);
  		const wifi::Network* cur = nsel < (int)nets.size() ? &nets[nsel] : nullptr;
  		be->beginScreen(0);
@@ -2835,7 +3132,25 @@ index ee1ceffb..92186ad0 100644
  		icon("phone", 50, 56, 3);
  		text("Network", true, 17, 170, 62, p.muted, true, 1.4f);
  		text("Wi-Fi networks", true, 30, 170, 88, p.ink);
-@@ -3317,8 +3369,8 @@ namespace banana
+ 		std::string st = !wifiEnabled ? "Wi-Fi is off" : !joining.empty() ? "Joining " + joining
+ 			: wstat.connected ? "Connected to " + wstat.ssid : "Not connected";
+-		text(fit(st, true, 22, 420), true, 22, 170, 130, p.accent);
++		text(fit(st, true, 22, canvasWidth() - 220), true, 22, 170, 130, p.accent);
+ 		std::string help = message;
+ 		if (help.empty())
+ 			help = !wifiEnabled ? "Wi-Fi is switched off. X switches it on and searches."
+ 				: "A joins the network chosen, with its password typed on the keyboard (or by touch). X searches again, Y forgets a saved network. Passwords are kept in banana/wifi.conf on the card.";
+-		wrapped(help, 20, 50, 196, 540, 7, p.muted);
++		wrapped(help, 20, 50, 196, canvasWidth() - 100, 7, p.muted);
+ 		be->endScreen();
+ 
+ 		be->beginScreen(1);
+-		box("screen", false, 0, 0, 640, 480);
++		box("screen", false, 0, 0, canvasWidth(), 480);
+ 		box("bubble", false, 18, 14, 604, 54);
+ 		text("Networks", true, 22, 38, 28, p.ink);
+ 		std::string count = scanning && nets.empty() ? "Searching..." : std::to_string(nets.size()) + (nets.size() == 1 ? " network" : " networks");
+@@ -3317,8 +3370,8 @@ namespace banana
  		SPal p = pal(light);
  		const bt::Device* cur = bsel < (int)btDevs.size() ? &btDevs[bsel] : nullptr;
  		be->beginScreen(0);
@@ -2846,7 +3161,27 @@ index ee1ceffb..92186ad0 100644
  		icon("phone", 50, 56, 3);
  		text("Network", true, 17, 170, 62, p.muted, true, 1.4f);
  		text("Bluetooth devices", true, 30, 170, 88, p.ink);
-@@ -3377,19 +3429,20 @@ namespace banana
+@@ -3327,16 +3380,16 @@ namespace banana
+ 		std::string st = !btEnabled ? "Bluetooth is off"
+ 			: !btBusy.empty() ? (btVerb == "pair" ? "Pairing with " : btVerb == "connect" ? "Connecting to " : btVerb == "disconnect" ? "Disconnecting " : "Forgetting ") + btBusyName
+ 			: !connected.empty() ? "Connected to " + connected : "Nothing connected";
+-		text(fit(st, true, 22, 420), true, 22, 170, 130, p.accent);
++		text(fit(st, true, 22, canvasWidth() - 220), true, 22, 170, 130, p.accent);
+ 		std::string help = message;
+ 		if (help.empty())
+ 			help = !btEnabled ? "Bluetooth is switched off. X switches it on and searches."
+ 				: "A pairs with the device chosen (put it in pairing mode first), connects a paired one, or disconnects it. X searches again, Y forgets a paired device. Headphones play the sound while they are connected; controllers work in the games.";
+-		wrapped(help, 20, 50, 196, 540, 7, p.muted);
++		wrapped(help, 20, 50, 196, canvasWidth() - 100, 7, p.muted);
+ 		be->endScreen();
+ 
+ 		be->beginScreen(1);
+-		box("screen", false, 0, 0, 640, 480);
++		box("screen", false, 0, 0, canvasWidth(), 480);
+ 		box("bubble", false, 18, 14, 604, 54);
+ 		text("Devices", true, 22, 38, 28, p.ink);
+ 		std::string count = btScanning ? "Searching..." : std::to_string(btDevs.size()) + (btDevs.size() == 1 ? " device" : " devices");
+@@ -3377,19 +3430,20 @@ namespace banana
  	void Settings::renderKeyboard()
  	{
  		SPal p = pal(light);
@@ -2872,7 +3207,7 @@ index ee1ceffb..92186ad0 100644
  			w = text(shown, true, 22, 0, 0, p.ink, false, 0, true);
  			text(shown, true, 22, 70, 165, p.ink);
  		}
-@@ -3412,7 +3465,7 @@ namespace banana
+@@ -3412,11 +3466,11 @@ namespace banana
  			: entry == ENTRY_GAME_NAME || entry == ENTRY_GAME_SORT ? "A types the key, B deletes, X capitals, L symbols, Y a space, START when it is typed. Kept in banana/game-titles.tsv on the card."
  			: entry == ENTRY_ART_SEARCH ? "A types the key, B deletes, X capitals, L symbols, Y a space, START looks. A few words of the name are enough: the closest names come first."
  			: "A types the key, B deletes, X capitals, L symbols, Y a space, START when it is typed. Or tap the keys. Accounts are kept in banana/accounts.conf on the card.";
@@ -2881,7 +3216,12 @@ index ee1ceffb..92186ad0 100644
  		be->endScreen();
  
  		be->beginScreen(1);
-@@ -3493,6 +3546,7 @@ namespace banana
+-		box("screen", false, 0, 0, 640, 480);
++		box("screen", false, 0, 0, canvasWidth(), 480);
+ 		// the text being typed, here too, so the keys and what they make are seen together
+ 		box("slot", true, 18, 12, 604, 56);
+ 		{
+@@ -3493,6 +3547,7 @@ namespace banana
  		{ const char* tv = getenv("BANANA_VERSION"); version = tv ? tv : readLine("/etc/banana/version"); }
  		slot = readLine(runDir + "/slot");
  		{ const char* tb = getenv("BANANA_BOARD"); board = tb ? tb : readLine("/etc/banana/board"); }
@@ -2889,7 +3229,7 @@ index ee1ceffb..92186ad0 100644
  		listPkgs();
  		readOnline();
  		downloading = false;
-@@ -3657,6 +3711,7 @@ namespace banana
+@@ -3657,6 +3712,7 @@ namespace banana
  
  	bool Settings::betaOn() const
  	{
@@ -2897,7 +3237,7 @@ index ee1ceffb..92186ad0 100644
  		// the password kept (.beta) and the channel not turned off since (.channel says "github" then: the password stays)
  		return betaKept() && readLine(updatesDir + "/.channel") != "github";
  	}
-@@ -3689,6 +3744,11 @@ namespace banana
+@@ -3689,6 +3745,11 @@ namespace banana
  
  	Settings::Result Settings::pressBeta()
  	{
@@ -2909,7 +3249,38 @@ index ee1ceffb..92186ad0 100644
  		if (betaJob.running() || downloading || checkJob.running()) return NONE;
  		if (!betaOn())
  		{
-@@ -3984,9 +4044,9 @@ namespace banana
+@@ -3955,6 +4016,7 @@ namespace banana
+ 	// the pattern on a screen, from y0 for h (640 x 480 units), through the values tried on the screen they correct
+ 	void Settings::colorsPattern(int screen, float y0, float h)
+ 	{
++		const float width = panelWidth(screen);
+ 		const bool through = colEdit.screen == screen && !colEdit.neutral();
+ 		auto fillc = [&](float x, float y, float w, float hh, uint32_t rgb)
+ 		{
+@@ -3964,17 +4026,17 @@ namespace banana
+ 		switch (colPattern)
+ 		{
+ 		case 0:	// sixteen grey steps, black to white
+-			for (int i = 0; i < 16; i++) { uint32_t g = (uint32_t)std::lround(i * 255.0 / 15); fillc(i * 40.0f, y0, 40, h, g << 16 | g << 8 | g); }
++			for (int i = 0; i < 16; i++) { uint32_t g = (uint32_t)std::lround(i * 255.0 / 15); fillc(i * width / 16, y0, width / 16, h, g << 16 | g << 8 | g); }
+ 			break;
+ 		case 1:	// the colour bars, and below them their greys
+ 		{
+ 			static const uint32_t bars[8] = { 0xffffff, 0xffff00, 0x00ffff, 0x00ff00, 0xff00ff, 0xff0000, 0x0000ff, 0x000000 };
+-			for (int i = 0; i < 8; i++) fillc(i * 80.0f, y0, 80, h * 0.7f, bars[i]);
+-			for (int i = 0; i < 8; i++) { uint32_t g = (uint32_t)std::lround(i * 255.0 / 7); fillc(i * 80.0f, y0 + h * 0.7f, 80, h * 0.3f, g << 16 | g << 8 | g); }
++			for (int i = 0; i < 8; i++) fillc(i * width / 8, y0, width / 8, h * 0.7f, bars[i]);
++			for (int i = 0; i < 8; i++) { uint32_t g = (uint32_t)std::lround(i * 255.0 / 7); fillc(i * width / 8, y0 + h * 0.7f, width / 8, h * 0.3f, g << 16 | g << 8 | g); }
+ 			break;
+ 		}
+-		case 2: fillc(0, y0, 640, h, 0xffffff); break;
+-		default: fillc(0, y0, 640, h, 0x808080); break;
++		case 2: fillc(0, y0, width, h, 0xffffff); break;
++		default: fillc(0, y0, width, h, 0x808080); break;
+ 		}
+ 	}
+ 
+@@ -3984,15 +4046,15 @@ namespace banana
  		// the top screen: the pattern, its name on a strip at the top
  		be->beginScreen(0);
  		colorsPattern(0, 0, 480);
@@ -2919,9 +3290,17 @@ index ee1ceffb..92186ad0 100644
 -		be->fill(0, X(450), X(640), X(30), Color::hex(0x101014));
 +		be->fill(0, X(450), X(topWidth()), X(30), Color::hex(0x101014));
  		std::string hint = !message.empty() ? message : "Make the screen you correct look like the other one. X: no correction.";
- 		text(fit(hint, true, 14, 616), true, 14, 12, 457, Color::hex(0xd0d0d0));
+-		text(fit(hint, true, 14, 616), true, 14, 12, 457, Color::hex(0xd0d0d0));
++		text(fit(hint, true, 14, canvasWidth() - 24), true, 14, 12, 457, Color::hex(0xd0d0d0));
  		be->endScreen();
-@@ -4019,6 +4079,50 @@ namespace banana
+ 		// the bottom screen: the same pattern above, the values below
+ 		be->beginScreen(1);
+-		box("screen", false, 0, 0, 640, 480);
++		box("screen", false, 0, 0, canvasWidth(), 480);
+ 		colorsPattern(1, 0, 196);
+ 		be->fill(0, X(196), X(640), X(2), p.line);
+ 		for (int r = 0; r < COL_N; r++)
+@@ -4019,6 +4081,50 @@ namespace banana
  		be->endScreen();
  	}
  
@@ -2949,7 +3328,7 @@ index ee1ceffb..92186ad0 100644
 +        wrapped("Speak near the microphone. A connected headset uses its own mic.", 17, 50, 360, topWidth() - 100, 2, p.muted);
 +        be->endScreen();
 +        be->beginScreen(1);
-+        box("screen", false, 0, 0, 640, 480);
++        box("screen", false, 0, 0, canvasWidth(), 480);
 +        box("bubble", false, 18, 14, 604, 54);
 +        text("Microphone test", true, 22, 38, 28, p.ink);
 +        for (int r = 0; r < 2; ++r) {
@@ -2972,16 +3351,68 @@ index ee1ceffb..92186ad0 100644
  	// ---- Speaker EQ ------------------------------------------------------------------------------------------------
  	// Display & sound > Speaker EQ: on or off, the profile, and seven sliders that adjust it. Each slider shows the
  	// curve's level at its frequency, the profile's to begin with (Tuned's 1 kHz starts at -10 dB), and a step moves
-@@ -4163,7 +4267,7 @@ namespace banana
+@@ -4163,14 +4269,16 @@ namespace banana
  
  		// the top screen: the curve the speakers play through now, 100 Hz to 20 kHz, -20 to +20 dB
  		be->beginScreen(0);
 -		box("screen", false, 0, 0, 640, 480);
++		const float graphWidth = canvasWidth() - 100;
++		auto graphX = [&](double hz) { return EQ_GX + (eqX(hz) - EQ_GX) * graphWidth / EQ_GW; };
 +		box("screen", false, 0, 0, topWidth(), 480);
  		text("Speaker EQ", true, 20, 24, 18, p.ink, true, 1.2f);
  		std::string state = eqEdit.on ? profileName : "Off";
  		float sw = text(state, true, 18, 0, 0, p.accent, false, 0, true);
-@@ -4307,8 +4411,8 @@ namespace banana
+-		text(state, true, 18, 616 - sw, 20, p.accent);
++		text(state, true, 18, canvasWidth() - 24 - sw, 20, p.accent);
+ 		for (int db = -15; db <= 15; db += 5)
+ 		{
+-			be->fill(X(EQ_GX), X(eqY(db)), X(EQ_GW), std::max(1.0f, X(db ? 1 : 2)), db ? p.line : p.muted);
++			be->fill(X(EQ_GX), X(eqY(db)), X(graphWidth), std::max(1.0f, X(db ? 1 : 2)), db ? p.line : p.muted);
+ 			if (db % 10) continue;	// (a line every 5 dB, a number every 10)
+ 			char l[8];
+ 			snprintf(l, sizeof l, db > 0 ? "+%d" : "%d", db);
+@@ -4179,33 +4287,33 @@ namespace banana
+ 		}
+ 		for (int hz : { 100, 1000, 10000 })
+ 		{
+-			be->fill(X(eqX(hz)), X(EQ_GY), std::max(1.0f, X(1)), X(EQ_GH), p.line);
+-			text(bandName(hz), false, 13, eqX(hz) + 4, EQ_GY + EQ_GH + 6, p.muted);
++			be->fill(X(graphX(hz)), X(EQ_GY), std::max(1.0f, X(1)), X(EQ_GH), p.line);
++			text(bandName(hz), false, 13, graphX(hz) + 4, EQ_GY + EQ_GH + 6, p.muted);
+ 		}
+ 		for (int i = 0; i < speakereq::BANDS; i++)	// (the sliders' places, under the graph)
+-			be->fill(X(eqX(speakereq::BAND_HZ[i]) - 1), X(EQ_GY + EQ_GH - 8), X(3), X(8), eqRow == i + 2 ? p.accent : p.muted);
++			be->fill(X(graphX(speakereq::BAND_HZ[i]) - 1), X(EQ_GY + EQ_GH - 8), X(3), X(8), eqRow == i + 2 ? p.accent : p.muted);
+ 		const auto& f = eqFreqs();
+ 		bool changed = false;
+ 		for (int g : eqEdit.gain) changed = changed || g;
+ 		if (eqEdit.on && changed)	// (the profile as it is, under the curve the sliders made of it)
+ 			for (size_t i = 0; i < f.size() && i < eqProfCurve.size(); i++)
+-				be->fill(X(EQ_GX + i * 2.0f), X(eqY(eqProfCurve[i]) - 1), std::max(1.0f, X(2)), std::max(1.0f, X(2)), p.muted);
++				be->fill(X(EQ_GX + i * 2.0f * graphWidth / EQ_GW), X(eqY(eqProfCurve[i]) - 1), std::max(1.0f, X(2 * graphWidth / EQ_GW)), std::max(1.0f, X(2)), p.muted);
+ 		const Color& cc = eqEdit.on ? p.accent : p.muted;
+ 		for (size_t i = 0; i < f.size(); i++)
+ 		{
+ 			float y = eqY(eqEdit.on && i < eqCurve.size() ? eqCurve[i] : 0);
+ 			float y0 = i ? eqY(eqEdit.on && i - 1 < eqCurve.size() ? eqCurve[i - 1] : 0) : y;
+ 			float top = std::min(y, y0) - 1.5f, bottom = std::max(y, y0) + 1.5f;
+-			be->fill(X(EQ_GX + i * 2.0f), X(top), std::max(1.0f, X(2.5f)), std::max(1.0f, X(bottom - top)), cc);
++			be->fill(X(EQ_GX + i * 2.0f * graphWidth / EQ_GW), X(top), std::max(1.0f, X(2.5f * graphWidth / EQ_GW)), std::max(1.0f, X(bottom - top)), cc);
+ 		}
+ 		std::string hint = !message.empty() ? message : eqEdit.on ? "Heard at once in what's playing, on the speakers only. X: back to the profile as it is."
+ 			: "Off: the speakers play the sound as it is.";
+-		text(fit(hint, true, 14, 592), true, 14, 24, 446, p.muted);
++		text(fit(hint, true, 14, canvasWidth() - 48), true, 14, 24, 446, p.muted);
+ 		be->endScreen();
+ 
+ 		// the bottom screen: the rows, the sliders as bars from their 0 dB
+ 		be->beginScreen(1);
+-		box("screen", false, 0, 0, 640, 480);
++		box("screen", false, 0, 0, canvasWidth(), 480);
+ 		for (int r = 0; r < EQ_ROWS; r++)
+ 		{
+ 			bool on = r == eqRow;
+@@ -4307,20 +4415,20 @@ namespace banana
  		SPal p = pal(light);
  		bool busy = artJob.running();
  		be->beginScreen(0);
@@ -2991,8 +3422,24 @@ index ee1ceffb..92186ad0 100644
 +		box("hero", false, 18, 20, topWidth() - 36, 436);
  		icon("picture", 50, 56, 3);
  		text("Box art for", true, 17, 170, 62, p.muted, true, 1.4f);
- 		{ AsNamed named(*this); text(fit(pgTitle, true, 30, 420), true, 30, 170, 88, p.ink); }
-@@ -4380,7 +4484,7 @@ namespace banana
+-		{ AsNamed named(*this); text(fit(pgTitle, true, 30, 420), true, 30, 170, 88, p.ink); }
+-		text(fit(artNames.empty() ? "\"" + artWords + "\"" : artNames[asel], true, 22, 420), true, 22, 170, 130, p.accent);
++		{ AsNamed named(*this); text(fit(pgTitle, true, 30, canvasWidth() - 220), true, 30, 170, 88, p.ink); }
++		text(fit(artNames.empty() ? "\"" + artWords + "\"" : artNames[asel], true, 22, canvasWidth() - 220), true, 22, 170, 130, p.accent);
+ 		std::string help = !message.empty() ? message + (busy && !artMatching ? " (B works once it has answered.)" : "")
+ 			: "libretro's names for the words typed, the closest first. A fetches that game's cover and title screen for this one "
+ 			  "(over what it had), and every scrape after keeps them. B types other words.";
+-		wrapped(help, 20, 50, 196, 540, 7, p.muted);
++		wrapped(help, 20, 50, 196, canvasWidth() - 100, 7, p.muted);
+ 		be->endScreen();
+ 
+ 		be->beginScreen(1);
+-		box("screen", false, 0, 0, 640, 480);
++		box("screen", false, 0, 0, canvasWidth(), 480);
+ 		box("bubble", false, 18, 14, 604, 54);
+ 		text("Box art", true, 22, 38, 28, p.ink);
+ 		std::string count = busy && !artMatching ? "Looking..." : std::to_string(artNames.size()) + (artNames.size() == 1 ? " name" : " names");
+@@ -4380,7 +4488,7 @@ namespace banana
  			return MOVED;
  		}
  		case Key::X:
@@ -3001,7 +3448,7 @@ index ee1ceffb..92186ad0 100644
  			{
  				// X, X: the kept beta password forgotten (the channel off; A asks for it again)
  				if (armed != 3001) { armed = 3001; return MOVED; }
-@@ -4438,8 +4542,8 @@ namespace banana
+@@ -4438,13 +4546,13 @@ namespace banana
  		const std::string handheld = bd == "rgds-plus" ? "RG DS Plus" : bd == "rgds" ? "RG DS" : "handheld";
  		auto mb = [](long long b) { return std::to_string((b + 524288) / 1048576); };
  		be->beginScreen(0);
@@ -3012,7 +3459,22 @@ index ee1ceffb..92186ad0 100644
  		icon("gear", 50, 56, 3);
  		text("System", true, 17, 170, 62, p.muted, true, 1.4f);
  		text("Update", true, 30, 170, 88, p.ink);
-@@ -4482,7 +4586,8 @@ namespace banana
+ 		std::string st = applying ? "Writing the update: " + ustatus : updated ? "Written: restart to run it" : ustatus.compare(0, 6, "failed") == 0 ? "Failed" : "Running " + (version.empty() ? std::string("dev") : version) + (slot.empty() ? "" : ", slot " + slot);
+-		text(fit(st, true, 22, 420), true, 22, 170, 130, p.accent);
++		text(fit(st, true, 22, canvasWidth() - 220), true, 22, 170, 130, p.accent);
+ 		// what the last check found
+ 		std::string found;
+ 		if (!applying && !updated)
+@@ -4454,7 +4562,7 @@ namespace banana
+ 			else if (online.state == "none") found = "No release for the " + handheld + " yet";
+ 			else if (online.state == "error") found = "The check failed";
+ 		}
+-		if (!found.empty()) text(fit(found, false, 20, 540), false, 20, 50, 176, p.ink);
++		if (!found.empty()) text(fit(found, false, 20, canvasWidth() - 100), false, 20, 50, 176, p.ink);
+ 		std::string help, notes;
+ 		bool failedDl = !downloading && dlLine.compare(0, 8, "failed: ") == 0;
+ 		if (applying) help = "The new version is being written to the other slot and checked; this one isn't touched. Don't turn the handheld off. It takes a minute or two.";
+@@ -4482,7 +4590,8 @@ namespace banana
  		}
  		else if (usel == 1)
  		{
@@ -3022,7 +3484,23 @@ index ee1ceffb..92186ad0 100644
  			else if (!message.empty()) help = message;
  			else if (betaOn()) help = "Two channels: GitHub's releases, or the beta testers' builds on bananaos-cfw.dev. On: the beta builds. A, then A again, turns it off (GitHub again); the password is kept for turning it back on. X twice forgets the password.";
  			else if (betaKept()) help = "Two channels: GitHub's releases (now), or the beta testers' builds on bananaos-cfw.dev. A turns the beta channel on again with the password kept on the card; X twice forgets the password.";
-@@ -4528,6 +4633,7 @@ namespace banana
+@@ -4500,12 +4609,12 @@ namespace banana
+ 				(on > 0 ? "; X removes every package not newer than this version (" + (on == 1 ? std::string("1 package, ") : std::to_string(on) + " packages, ") + mb(ob) + " MB)." : ".");
+ 		}
+ 		float hy = found.empty() ? 196 : 214;
+-		wrapped(help, 20, 50, hy, 540, notes.empty() ? 7 : 4, p.muted);
+-		if (!notes.empty()) wrapped(notes, 18, 50, hy + 4 * 28 + 6, 540, 4, p.ink);
++		wrapped(help, 20, 50, hy, canvasWidth() - 100, notes.empty() ? 7 : 4, p.muted);
++		if (!notes.empty()) wrapped(notes, 18, 50, hy + 4 * 28 + 6, canvasWidth() - 100, 4, p.ink);
+ 		be->endScreen();
+ 
+ 		be->beginScreen(1);
+-		box("screen", false, 0, 0, 640, 480);
++		box("screen", false, 0, 0, canvasWidth(), 480);
+ 		box("bubble", false, 18, 14, 604, 54);
+ 		text("Update packages", true, 22, 38, 28, p.ink);
+ 		std::string count = std::to_string(pkgs.size()) + (pkgs.size() == 1 ? " package" : " packages");
+@@ -4528,6 +4637,7 @@ namespace banana
  				name = "Beta channel";
  				hot = armed == 3000 || betaJob.running();
  				tag = betaJob.running() ? "Checking..." : armed == 3000 ? "Press A again" : armed == 3001 ? "Press X again: forget" : betaOn() ? "On" : betaKept() ? "Off (password kept)" : "Off";
@@ -3030,7 +3508,7 @@ index ee1ceffb..92186ad0 100644
  			}
  			else
  			{
-@@ -4544,6 +4650,7 @@ namespace banana
+@@ -4544,6 +4654,7 @@ namespace banana
  		float bw = faceWidth("B", "Back");
  		if (!applying) face("B", "Back", 18, bw);
  		std::string act = updated ? "Restart" : applying ? "" : usel == 0 ? oact
@@ -3038,7 +3516,7 @@ index ee1ceffb..92186ad0 100644
  			: usel == 1 ? (betaJob.running() ? "" : !betaOn() ? "Turn on" : armed == 3000 ? "Confirm" : "Turn off")
  			: armed == 1000 + usel - 2 ? "Confirm" : "Update";
  		if (!act.empty())
-@@ -4634,8 +4741,8 @@ namespace banana
+@@ -4634,23 +4745,23 @@ namespace banana
  		const int VIS = 8;
  		const std::string ver = readLine("/etc/banana/version");
  		be->beginScreen(0);
@@ -3048,8 +3526,28 @@ index ee1ceffb..92186ad0 100644
 +		box("hero", false, 18, 20, topWidth() - 36, 436);
  		icon("gear", 50, 56, 3);
  		text("Credits", true, 17, 170, 62, p.muted, true, 1.4f);
- 		text(fit("BananaOS " + (ver.empty() ? std::string("dev") : ver), true, 30, 420), true, 30, 170, 88, p.ink);
-@@ -4808,8 +4915,8 @@ namespace banana
+-		text(fit("BananaOS " + (ver.empty() ? std::string("dev") : ver), true, 30, 420), true, 30, 170, 88, p.ink);
++		text(fit("BananaOS " + (ver.empty() ? std::string("dev") : ver), true, 30, canvasWidth() - 220), true, 30, 170, 88, p.ink);
+ 		text("Thank you", true, 22, 170, 130, p.accent);
+ 		if (!credits.empty())
+ 		{
+ 			const Credit& c = credits[crSel];
+-			if (!c.section.empty()) text(fit(c.section, true, 18, 540), true, 18, 50, 210, p.muted, true, 1.2f);
+-			text(fit(c.name, true, 30, 540), true, 30, 50, 240, p.ink);
+-			wrapped(c.title, 22, 50, 290, 540, 4, p.muted);
++			if (!c.section.empty()) text(fit(c.section, true, 18, canvasWidth() - 100), true, 18, 50, 210, p.muted, true, 1.2f);
++			text(fit(c.name, true, 30, canvasWidth() - 100), true, 30, 50, 240, p.ink);
++			wrapped(c.title, 22, 50, 290, canvasWidth() - 100, 4, p.muted);
+ 		}
+ 		be->endScreen();
+ 
+ 		be->beginScreen(1);
+-		box("screen", false, 0, 0, 640, 480);
++		box("screen", false, 0, 0, canvasWidth(), 480);
+ 		for (int r = 0; r < VIS && crTop + r < (int)crLines.size(); r++)
+ 		{
+ 			int v = crLines[crTop + r];
+@@ -4808,30 +4919,30 @@ namespace banana
  		long long chosenBytes = 0; int chosenN = 0;
  		for (auto& g : pickGames) if (g.on) { chosenBytes += g.bytes; chosenN++; }
  		be->beginScreen(0);
@@ -3060,7 +3558,52 @@ index ee1ceffb..92186ad0 100644
  		icon("phone", 50, 56, 3);
  		text("Home server", true, 17, 170, 62, p.muted, true, 1.4f);
  		text("Choose games", true, 30, 170, 88, p.ink);
-@@ -5009,8 +5116,8 @@ namespace banana
+-		text(fit(std::to_string(chosenN) + (chosenN == 1 ? " game" : " games") + " chosen, " + size(chosenBytes), true, 22, 420), true, 22, 170, 130, p.accent);
++		text(fit(std::to_string(chosenN) + (chosenN == 1 ? " game" : " games") + " chosen, " + size(chosenBytes), true, 22, canvasWidth() - 220), true, 22, 170, 130, p.accent);
+ 		std::string help = pickLoading ? "Asking the server for its games..." : !pickError.empty() ? pickError
+ 			: pickLevel == 0 ? "A opens a system. X ticks all of its games, or unticks them when all are ticked. B saves and goes back."
+ 			: "A ticks or unticks a game. X: all of this system's, or none. L and R jump a page. Games already on the card say so. B goes back to the systems.";
+-		wrapped(help, 20, 50, 196, 540, 6, p.muted);
++		wrapped(help, 20, 50, 196, canvasWidth() - 100, 6, p.muted);
+ 		if (pickLevel == 1 && !pickGames.empty())
+ 		{
+ 			auto v = pickList();
+ 			if (pickSel < (int)v.size())
+ 			{
+ 				const PickGame& g = pickGames[v[pickSel]];
+-				text(fit(g.title, true, 24, 540), true, 24, 50, 340, p.ink);
+-				text(fit(size(g.bytes) + (g.there ? " · on the card" : "") + (g.on ? " · chosen" : ""), false, 20, 540), false, 20, 50, 378, p.muted);
++				text(fit(g.title, true, 24, canvasWidth() - 100), true, 24, 50, 340, p.ink);
++				text(fit(size(g.bytes) + (g.there ? " · on the card" : "") + (g.on ? " · chosen" : ""), false, 20, canvasWidth() - 100), false, 20, 50, 378, p.muted);
+ 			}
+ 		}
+ 		be->endScreen();
+ 
+ 		be->beginScreen(1);
+-		box("screen", false, 0, 0, 640, 480);
++		box("screen", false, 0, 0, canvasWidth(), 480);
+ 		box("bubble", false, 18, 14, 604, 54);
+ 		std::string head = pickLevel == 0 ? std::string("Systems") : sysName(pickSys[pickSysSel]);
+ 		text(fit(head, true, 22, 420), true, 22, 38, 28, p.ink);
+@@ -4895,7 +5006,7 @@ namespace banana
+ 		// Carts change with it)
+ 		std::string id = value;
+ 		for (auto& c : id) if (!isalnum((unsigned char)c) && c != '-' && c != '_') c = '_';
+-		std::string what = value + "|" + readLine("/etc/banana/version");
++		std::string what = value + "|" + readLine("/etc/banana/version") + "|" + std::to_string(panelWidth(0)) + "x" + std::to_string(panelWidth(1));
+ 		struct stat st;
+ 		std::string tp = themePath(value);
+ 		if (!tp.empty() && stat(tp.c_str(), &st) == 0) what += "|" + std::to_string((long long)st.st_size) + "|" + std::to_string((long long)st.st_mtime);
+@@ -4940,7 +5051,7 @@ namespace banana
+ 			bool ownTop = top.compare(0, dir.size() + 1, dir + "/") != 0;	// the theme's own picture: never written over
+ 			std::string id = bot.substr(dir.size() + 1, bot.size() - dir.size() - 1 - 17);	// (less "-<8 hex>-bot.png")
+ 			cmd += "mkdir -p \"$D/x\" && printf 'theme = %s\\n' " + q(v) + " > \"$D/x/settings.conf\" && timeout 40 " + q(exe) +
+-				" --headless \"$D/x/\" --size 640x480 " + thumbArgs + " --data \"$D/x\" --script 'home 0; wait 1500; shot s' >/dev/null 2>&1 && " +
++				" --headless \"$D/x/\" --size 640x480 --top-width " + std::to_string((int)std::lround(topWidth())) + " " + thumbArgs + " --data \"$D/x\" --script 'home 0; wait 1500; shot s' >/dev/null 2>&1 && " +
+ 				"mkdir -p " + q(dir) + " && rm -f " + q(dir + "/" + id) + "-????????-???.png; " +
+ 				(ownTop ? std::string() : "mv \"$D/x/s-top.png\" " + q(top) + "; ") + "mv \"$D/x/s-bot.png\" " + q(bot) + "; rm -rf \"$D/x\"; ";
+ 		}
+@@ -5009,24 +5120,35 @@ namespace banana
  		for (auto& it : items) if (it.key == "theme") cur = it.at;
  		const std::string& v = thValues.empty() ? std::string() : thValues[thSel];
  		be->beginScreen(0);
@@ -3070,8 +3613,50 @@ index ee1ceffb..92186ad0 100644
 +		box("hero", false, 18, 20, topWidth() - 36, 436);
  		icon("picture", 50, 56, 3);
  		text("Theme", true, 17, 170, 62, p.muted, true, 1.4f);
- 		if (!thNames.empty()) text(fit(thNames[thSel], true, 30, 420), true, 30, 170, 88, p.ink);
-@@ -5137,8 +5244,8 @@ namespace banana
+-		if (!thNames.empty()) text(fit(thNames[thSel], true, 30, 420), true, 30, 170, 88, p.ink);
++		if (!thNames.empty()) text(fit(thNames[thSel], true, 30, canvasWidth() - 220), true, 30, 170, 88, p.ink);
+ 		text(thSel == cur ? "In use" : "A uses it", true, 20, 170, 130, p.accent);
+-		// its two screens side by side, as its home looks
++		// Its unequal panels side by side, preserving each picture's aspect.
++		auto preview = [&](const rnds::TexPtr& t, float x, float y, float w, float h) {
++			float fw, fh; rnds::containSize(t->w, t->h, w, h, fw, fh);
++			be->draw(t, std::round(X(x + (w-fw)/2)), std::round(X(y + (h-fh)/2)), std::round(X(fw)), std::round(X(fh)), Color(1,1,1,1));
++		};
++		const float previewH = std::min(201.0f, (canvasWidth() - 104) * 480 / (panelWidth(0) + panelWidth(1)));
++		const float previewTopW = previewH * panelWidth(0) / 480, previewBottomW = previewH * panelWidth(1) / 480;
++		const float previewLeft = centeredX(previewTopW + 16 + previewBottomW);
+ 		for (int b = 0; b < 2; b++)
+ 		{
+-			float x = 44 + b * 284, y = 196, w = 268, h = 201;
++			float x = previewLeft + (b ? previewTopW + 16 : 0), y = 196, w = b ? previewBottomW : previewTopW, h = previewH;
+ 			be->fill(std::round(X(x - 2)), std::round(X(y - 2)), std::round(X(w + 4)), std::round(X(h + 4)), p.line);
+-			if (rnds::TexPtr t = v.empty() ? nullptr : thumb(v, b == 1)) be->draw(t, std::round(X(x)), std::round(X(y)), std::round(X(w)), std::round(X(h)), Color(1, 1, 1, 1));
+-			else text(thumbJob.running() ? "Drawing..." : "No picture", false, 18, x + 70, y + 90, p.muted);
++			if (rnds::TexPtr t = v.empty() ? nullptr : thumb(v, b == 1)) preview(t, x, y, w, h);
++			else {
++				const std::string label = thumbJob.running() ? "Drawing..." : "No picture";
++				float lw = text(label, false, 18, 0, 0, p.muted, false, 0, true);
++				text(label, false, 18, x + (w-lw)/2, y + 90, p.muted);
++			}
+ 		}
+ 		be->endScreen();
+ 
+ 		be->beginScreen(1);
+-		box("screen", false, 0, 0, 640, 480);
++		box("screen", false, 0, 0, canvasWidth(), 480);
+ 		for (int i = thTop; i < thTop + 6 && i < (int)thValues.size(); i++)
+ 		{
+ 			bool on = i == thSel;
+@@ -5034,7 +5156,7 @@ namespace banana
+ 			box(on ? "pick" : "slot", on, x, y, 196, 158);
+ 			float tx = x + 18, ty = y + 10, tw = 160, th = 120;
+ 			be->fill(std::round(X(tx - 1)), std::round(X(ty - 1)), std::round(X(tw + 2)), std::round(X(th + 2)), p.line);
+-			if (rnds::TexPtr t = thumb(thValues[i], false)) be->draw(t, std::round(X(tx)), std::round(X(ty)), std::round(X(tw)), std::round(X(th)), Color(1, 1, 1, 1));
++			if (rnds::TexPtr t = thumb(thValues[i], false)) preview(t, tx, ty, tw, th);
+ 			text(fit(thNames[i], true, 16, 176), true, 16, x + 10, y + 134, on ? p.onPick : i == cur ? p.accent : p.muted);
+ 		}
+ 		box("bubble", false, 18, 14, 604, 54);
+@@ -5137,18 +5259,18 @@ namespace banana
  		};
  
  		be->beginScreen(0);
@@ -3081,8 +3666,27 @@ index ee1ceffb..92186ad0 100644
 +		box("hero", false, 18, 20, topWidth() - 36, 436);
  		icon("gear", 50, 56, 3);
  		text("Language", true, 17, 170, 62, p.muted, true, 1.4f);
- 		raw(fit(L.name, true, 30, 420), true, 30, 170, 88, p.ink);
-@@ -5223,8 +5330,8 @@ namespace banana
+-		raw(fit(L.name, true, 30, 420), true, 30, 170, 88, p.ink);
++		raw(fit(L.name, true, 30, canvasWidth() - 220), true, 30, 170, 88, p.ink);
+ 		if (L.nameEn != L.name) raw(L.nameEn, true, 22, 170, 130, p.accent);
+ 		if (!L.by.empty()) raw(lang::tr("translated by") + " " + L.by, false, 20, 50, 210, p.ink);
+-		wrapped("The language of the menu and the settings. Lines not yet translated stay in English.", 20, 50, 250, 540, 4, p.muted);
++		wrapped("The language of the menu and the settings. Lines not yet translated stay in English.", 20, 50, 250, canvasWidth() - 100, 4, p.muted);
+ 		be->endScreen();
+ 
+ 		be->beginScreen(1);
+-		box("screen", false, 0, 0, 640, 480);
++		box("screen", false, 0, 0, canvasWidth(), 480);
+ 		for (int r = 0; r < LANG_VIS && langTop + r < (int)langList.size(); r++)
+ 		{
+ 			const int v = langTop + r;
+@@ -5218,13 +5340,13 @@ namespace banana
+ 		auto centred = [&](const std::string& t, bool medium, float size, float top, const Color& c)
+ 		{
+ 			float w = raw(t, medium, size, 0, 0, c, true);
+-			raw(t, medium, size, std::round(320 - w / 2), top, c);
++			raw(t, medium, size, std::round(centeredX(w)), top, c);
+ 		};
  		const std::string Q = "Change the menu's language?", N = "No, keep it", Y = "Yes, change it";
  
  		be->beginScreen(0);
@@ -3093,7 +3697,21 @@ index ee1ceffb..92186ad0 100644
  		centred(here(Q), true, 26, 120, p.ink);
  		centred(there(Q), true, 26, 168, p.ink);
  		centred(fromName + "  >  " + toName, true, 24, 250, p.accent);
-@@ -5307,8 +5414,8 @@ namespace banana
+@@ -5243,11 +5365,11 @@ namespace banana
+ 		{
+ 			rawText = true;
+ 			float w = text(t, medium, size, 0, 0, c, false, 0, true);
+-			text(t, medium, size, std::round(320 - w / 2), top, c);
++			text(t, medium, size, std::round(centeredX(w)), top, c);
+ 			rawText = false;
+ 		};
+ 		be->beginScreen(1);
+-		box("screen", false, 0, 0, 640, 480);
++		box("screen", false, 0, 0, canvasWidth(), 480);
+ 		centred(title, true, 22, 92, p.muted);
+ 		for (int b = 0; b < 2; b++)
+ 		{
+@@ -5307,13 +5429,13 @@ namespace banana
  	{
  		SPal p = pal(light);
  		be->beginScreen(0);
@@ -3104,7 +3722,18 @@ index ee1ceffb..92186ad0 100644
  		icon("nds", 50, 56, 3);
  		text(hotAsk == 2 ? "This game's 3D resolution" : "3D resolution", true, 17, 170, 62, p.muted, true, 1.4f);
  		text("4x runs hot", true, 30, 170, 88, p.ink);
-@@ -5344,7 +5451,7 @@ namespace banana
+ 		wrapped("4x runs the handheld hot and drains the battery much faster. When it gets too hot it slows down to cool off, "
+-			"and games can lag. If that happens, switch back to 2x, then restart and let the handheld cool down.", 22, 50, 176, 540, 8, p.ink);
++			"and games can lag. If that happens, switch back to 2x, then restart and let the handheld cool down.", 22, 50, 176, canvasWidth() - 100, 8, p.ink);
+ 		be->endScreen();
+ 		char keep[96];
+ 		snprintf(keep, sizeof keep, lang::tr("Keep %s").c_str(), hotOld.c_str());
+@@ -5340,17 +5462,17 @@ namespace banana
+ 		auto centred = [&](const std::string& t, bool medium, float size, float top, const Color& c)
+ 		{
+ 			float w = text(t, medium, size, 0, 0, c, false, 0, true);
+-			text(t, medium, size, std::round(320 - w / 2), top, c);
++			text(t, medium, size, std::round(centeredX(w)), top, c);
  		};
  
  		be->beginScreen(0);
@@ -3113,7 +3742,14 @@ index ee1ceffb..92186ad0 100644
  		centred(title, true, 30, 196, p.ink);
  		centred(applying ? "Don't turn the handheld off" : ver, true, 20, 244, p.muted);
  		be->endScreen();
-@@ -5858,8 +5965,8 @@ namespace banana
+ 
+ 		be->beginScreen(1);
+-		box("screen", false, 0, 0, 640, 480);
++		box("screen", false, 0, 0, canvasWidth(), 480);
+ 		centred(ver, true, 30, 92, p.ink);
+ 		centred(step, true, 22, 142, failed ? p.accent : p.muted);
+ 		if (!failed)
+@@ -5858,19 +5980,19 @@ namespace banana
  			: std::string(pgArtDone ? "Fetched" : "Find it by name"); };
  
  		be->beginScreen(0);
@@ -3124,7 +3760,41 @@ index ee1ceffb..92186ad0 100644
  		icon(pgNds ? "nds" : "gamepad", 50, HEAD_ICON_Y, 3);
  		text(row == PG_EMU ? "This game's emulator" : row == PG_SHADER ? "This game's shader" : row == PG_3D ? "This game's 3D" : row == PG_RES ? "This game's 3D resolution" : row == PG_MIC ? "This game's microphone" : row == PG_TIMING ? "This game's timing" : row == PG_CPU ? "This game's DS CPU speed" : row == PG_NAME ? "This game's name" : row == PG_SORT ? "This game's sort title" : row == PG_DELETE ? "Delete this game" : row == PG_ACH ? "This game's achievements" : "This game's box art",
  			true, 17, 170, HEAD_SECTION_Y, p.muted, true, 1.4f);
-@@ -6660,8 +6767,8 @@ namespace banana
+-		{ AsNamed named(*this); textFit(pgTitle, true, 30, 170, HEAD_LABEL_Y, 420, p.ink, true); }
+-		textFit(value(row), true, 22, 170, HEAD_VALUE_Y, 420, row == PG_DELETE && pgDelArmed ? Color::hex(0xff8a96) : p.accent, true);
++		{ AsNamed named(*this); textFit(pgTitle, true, 30, 170, HEAD_LABEL_Y, canvasWidth() - 220, p.ink, true); }
++		textFit(value(row), true, 22, 170, HEAD_VALUE_Y, canvasWidth() - 220, row == PG_DELETE && pgDelArmed ? Color::hex(0xff8a96) : p.accent, true);
+ 		std::string help = gameHelpOf(row);
+ 		helpText(help, HELP_TOP, HELP_BOTTOM, p.muted);
+ 		be->endScreen();
+ 
+ 		be->beginScreen(1);
+-		box("screen", false, 0, 0, 640, 480);
++		box("screen", false, 0, 0, canvasWidth(), 480);
+ 		box("bubble", false, 18, 14, 604, 54);
+ 		text("This game", true, 22, 38, 28, p.ink);
+ 		for (int r = pgTop; r < n && r < pgTop + ROWS; r++)
+@@ -6221,7 +6343,7 @@ namespace banana
+ 			{ ".........", "........#", ".......##", "......##.", "#....##..", "##..##...", ".####....", "..##.....", "........." },
+ 			{ "##.....##", ".##...##.", "..##.##..", "...###...", "...###...", "..##.##..", ".##...##.", "##.....##", "........." } };
+ 		const Color light = Color::hex(0xf1ede2), acc = Color::hex(toastAccent);
+-		box("osd", false, 8, 4, 624, 64);
++		box("osd", false, 8, 4, canvasWidth() - 16, 64);
+ 		float bs = 48, tx = 16, ty = 12;
+ 		be->fill(std::round(X(tx)), std::round(X(ty)), std::round(X(bs)), std::round(X(bs)), acc);
+ 		int k = std::max(1, (int)std::lround(X(bs) / 14));
+@@ -6229,8 +6351,8 @@ namespace banana
+ 		for (int r = 0; r < 9; r++)
+ 			for (int c = 0; c < 9; c++)
+ 				if (SIGN[toastIcon][r][c] == '#') be->fill(std::round(ox + c * k), std::round(oy + r * k), (float)k, (float)k, Color::hex(0x12181f));
+-		text(fit(toast1, true, 17, 540), true, 17, 78, 14, acc);
+-		text(fit(toast2, false, 20, 540), false, 20, 78, 37, light);
++		text(fit(toast1, true, 17, canvasWidth() - 100), true, 17, 78, 14, acc);
++		text(fit(toast2, false, 20, canvasWidth() - 100), false, 20, 78, 37, light);
+ 	}
+ 
+ 	// ---- the first-time setup ----------------------------------------------------------------------------------
+@@ -6660,8 +6782,8 @@ namespace banana
  
  		// ---- top panel: the step, its title and state, what it is for, the result ----
  		be->beginScreen(0);
@@ -3135,17 +3805,75 @@ index ee1ceffb..92186ad0 100644
  		icon(icons[sl], 50, 52, 3);
  		std::string stepLine = lang::tr("First-time setup") + "  \xc2\xb7  " + lang::tr("Step {n} of {m}");
  		for (auto [k, v] : { std::pair<std::string, std::string>{ "{n}", std::to_string(wsel + 1) }, { "{m}", std::to_string(nSteps) } })
-@@ -6791,7 +6898,7 @@ namespace banana
+@@ -6670,7 +6792,7 @@ namespace banana
+ 		text(stepLine, true, 17, 170, 58, p.muted, true, 1.4f);
+ 		rawText = false;
+ 		text(titles[sl], true, 30, 170, 84, p.ink);
+-		if (!status.empty()) text(fit(status, true, 22, 420), true, 22, 170, 126, p.accent);
++		if (!status.empty()) text(fit(status, true, 22, canvasWidth() - 220), true, 22, 170, 126, p.accent);
+ 		float y = 186;
+ 		if (sl == SL_DONE)
+ 		{
+@@ -6679,7 +6801,7 @@ namespace banana
+ 			{
+ 				sign(st == 1 ? 1 : st == 0 ? 2 : 0, 50, y + 3, st == 1 ? good : st == 0 ? bad : p.muted);
+ 				float lw = text(label, true, 19, 80, y, p.ink);
+-				text(fit(value, false, 19, 540 - lw - 16), false, 19, 80 + lw + 14, y, p.muted);
++				text(fit(value, false, 19, canvasWidth() - 100 - lw - 16), false, 19, 80 + lw + 14, y, p.muted);
+ 				y += 34;
+ 			};
+ 			auto skipped = [&](Slide x) { for (int i = 0; i < nSteps; i++) if (slides[i] == x) return (bool)wskipped[i]; return false; };
+@@ -6693,11 +6815,11 @@ namespace banana
+ 			row("Box art", scraping() ? "Fetching in the background" : scrapeLine.compare(0, 4, "done") == 0 ? scrapeShort() :
+ 				artBefore ? std::to_string(art.first) + " of " + std::to_string(art.second) + " games have art" : skipped(SL_ART) ? "Skipped" : "Not fetched",
+ 				scraping() || scrapeLine.compare(0, 4, "done") == 0 || artBefore ? 1 : -1);
+-			wrapped(help, 18, 50, y + 10, 540, 2, p.muted);
++			wrapped(help, 18, 50, y + 10, canvasWidth() - 100, 2, p.muted);
+ 		}
+ 		else
+ 		{
+-			wrapped(message.empty() ? help : message, 20, 50, y, 540, 4, p.muted);
++			wrapped(message.empty() ? help : message, 20, 50, y, canvasWidth() - 100, 4, p.muted);
+ 			y = 312;
+ 			if (sl == SL_WIFI && (testing || tLink >= 0))
+ 			{
+@@ -6710,7 +6832,7 @@ namespace banana
+ 			else if (sl == SL_RA && (raCheck || raKind))
+ 				check(raCheck ? -1 : raKind == 1 ? 1 : raKind == 4 ? -2 : 0, raCheck ? "Asking retroachievements.org..." : raLine, y);
+ 			else if (sl == SL_ART && scraping())
+-				scrapeBar(50, y + 6, 540);
++				scrapeBar(50, y + 6, canvasWidth() - 100);
+ 			else if (sl == SL_LANG)
+ 			{
+ 				// who translated each language (the translators' credit, as on the Language row)
+@@ -6731,7 +6853,7 @@ namespace banana
+ 
+ 		// ---- bottom panel: the step's progress, the choices, B and A ----
+ 		be->beginScreen(1);
+-		box("screen", false, 0, 0, 640, 480);
++		box("screen", false, 0, 0, canvasWidth(), 480);
+ 		box("bubble", false, 18, 14, 604, 54);
+ 		text(titles[sl], true, 22, 38, 28, p.ink);
+ 		// the progress: a square a step, the one now wider, in the accent; done ones light, the rest dim
+@@ -6791,13 +6913,13 @@ namespace banana
  	{
  		SPal p = pal(light);
  		be->beginScreen(0);
 -		be->fill(0, 0, X(640), X(480), Color::hex(0x000000));
 +		be->fill(0, 0, X(topWidth()), X(480), Color::hex(0x000000));
  		float w = text(l1, true, size, 0, 0, p.ink, false, 0, true);
- 		text(l1, true, size, std::round(320 - w / 2), y, Color::hex(0xf1ede2));
+-		text(l1, true, size, std::round(320 - w / 2), y, Color::hex(0xf1ede2));
++		text(l1, true, size, std::round(centeredX(w)), y, Color::hex(0xf1ede2));
  		if (!l2.empty())
+ 		{
+ 			float w2 = text(l2, false, 20, 0, 0, p.muted, false, 0, true);
+-			text(l2, false, 20, std::round(320 - w2 / 2), y + size * 1.6f, Color::hex(0xa39d8e));
++			text(l2, false, 20, std::round(centeredX(w2)), y + size * 1.6f, Color::hex(0xa39d8e));
+ 		}
+ 		be->endScreen();
+ 		be->beginScreen(1);
 diff --git a/ui/src/settings.h b/ui/src/settings.h
-index 7ec77aff..28601cba 100644
+index 7ec77aff..0387c394 100644
 --- a/ui/src/settings.h
 +++ b/ui/src/settings.h
 @@ -1,5 +1,6 @@
@@ -3155,7 +3883,15 @@ index 7ec77aff..28601cba 100644
  // banana-ui: the settings screen (Start in the menu), drawn in ROCKNIXDS Pixel's look with the engine's own pieces
  // (its box styles painted by rnds::paintBox, Pixelify Sans, the theme's pixel icons). Bottom panel: the list, one
  // row per setting in the slots' style, ◀ value ▶ on the right, and the B / A chips; top panel: the setting's
-@@ -100,7 +101,8 @@ namespace banana
+@@ -39,6 +40,7 @@ namespace banana
+ 	class VirtualKeyboard;	// (vkbd.h: the panel's keyboard, on /dev/uinput)
+ 	class Settings
+ 	{
++		friend struct SettingsLayoutTest;
+ 	public:
+ 		// every Settings row's help and every game page row's (as the panel would lay it out now: the language's too)
+ 		// that doesn't fit its box at the smallest size, one line each to log; and how many were checked (ui/tests)
+@@ -100,7 +102,8 @@ namespace banana
  		bool typing() const { return mOpen && page == KEYBOARD; }
  		bool devOn = false;		// System's Developer options row unlocked (settings.conf's developer; PR #94)
  		int aboutTaps = 0;		// A's on System > About so far (seven unlock it)
@@ -3165,7 +3901,7 @@ index 7ec77aff..28601cba 100644
  
  		// The game panel (settings.cpp, end): while a RetroArch game runs on one panel through a DRM lease, the other
  		// shows the game's RetroAchievements (progress and the latest unlocks with their badges) and touch tiles for
-@@ -123,6 +125,8 @@ namespace banana
+@@ -123,6 +126,8 @@ namespace banana
  		// dimmed bottom panel, as a touch does (gameplay buttons don't)
  		bool gameWake() { bool w = wake; wake = false; return w; }
  		void gameRender();
@@ -3174,7 +3910,7 @@ index 7ec77aff..28601cba 100644
  		GameAction gameTouch(float x, float y, bool down);	// device px on the panel's screen
  		bool gameKeysOpen() const { return gKeysOpen; }	// (tests: the panel's keyboard page is up)
  		// (tests: what the GBA Pokémon companion's panel shows: "game" (the tiles), "pages:<page>", "" without one; the
-@@ -158,7 +162,7 @@ namespace banana
+@@ -158,7 +163,7 @@ namespace banana
  
  		// what the host has to do after an input (ACTED: a page did something that changes no setting, as Files' copy or
  		// rename: the select sound alone, not CHANGED's settings.conf read again and the menu's texts made again)
@@ -3183,7 +3919,7 @@ index 7ec77aff..28601cba 100644
  		// DELETED: the game page's Delete game removed the ROM (deletedFiles says what went): the library read again
  		// SELECT in the menu: the keyboard alone, for a search of the games; SEARCH when it is done, with the text in
  		// searchText (empty: the search taken away)
-@@ -205,7 +209,7 @@ namespace banana
+@@ -205,7 +210,7 @@ namespace banana
  		void banner(const std::string& title, const std::string& body, int sign, uint32_t accent);
  		// the volume or brightness keys' level: a small bubble near the bottom of the panel, its label, the percent and
  		// a bar (drawn like notice)
@@ -3192,7 +3928,7 @@ index 7ec77aff..28601cba 100644
  		// a pop-up along the top of the top panel in ROCKNIXDS's look (the RetroAchievements account check's result);
  		// the host draws it over the top panel while Settings is open
  		void drawToast(double nowMs);
-@@ -249,12 +253,16 @@ namespace banana
+@@ -249,12 +254,16 @@ namespace banana
  		const Item* itemByKey(const std::string& key) const;	// the first row with that key, or none
  		Result pressGroups(Key k);
  		void renderGroups();
@@ -3210,15 +3946,18 @@ index 7ec77aff..28601cba 100644
  		// Home server > Choose games: the server's games (banana-sync games), a system at a time, ticked to sync
  		struct PickGame { std::string sys, key, title; long long bytes = 0; bool on = false, there = false; };
  		std::vector<PickGame> pickGames;
-@@ -625,6 +633,7 @@ namespace banana
+@@ -625,6 +634,10 @@ namespace banana
  
  		// drawing, in CSS px of a 640x480 panel
  		float X(float v) const { return v * s; }
-+		float topWidth() const { return be && be->screenWidth(0) > 0 ? be->screenWidth(0) / s : 640.0f; }
++		float panelWidth(int screen) const { return be ? be->layoutWidth(screen, s) : 640.0f; }
++		float topWidth() const { return panelWidth(0); }
++		float canvasWidth() const { return be ? be->layoutWidth(s) : 640.0f; }
++		float centeredX(float width) const { return be ? be->centeredX(width, s) : (640.0f - width) / 2; }
  		// motion: the list's highlight and scroll ease toward sel and top (in rows), the groups' highlight toward gsel
  		// (column and row); advanced at each render by the time since the last one
  		float aPick = -1, aTop = -1, aCol = -1, aRow = -1;
-@@ -740,6 +749,7 @@ namespace banana
+@@ -740,6 +753,7 @@ namespace banana
  		// opens the pages, a tap types the key into the game
  		VirtualKeyboard* vkbd = nullptr;
  		bool gKeysOpen = false;
@@ -3227,10 +3966,10 @@ index 7ec77aff..28601cba 100644
  		std::string gKeyTyped;
  		void gameKeysFrame(const SPal& p);
 diff --git a/ui/src/settings_achievements.cpp b/ui/src/settings_achievements.cpp
-index a87b0f44..e1cde4de 100644
+index a87b0f44..819d36ab 100644
 --- a/ui/src/settings_achievements.cpp
 +++ b/ui/src/settings_achievements.cpp
-@@ -271,8 +271,8 @@ namespace banana
+@@ -271,24 +271,24 @@ namespace banana
  
  		// ---- top: the game, its progress, the achievement picked in full
  		be->beginScreen(0);
@@ -3241,11 +3980,52 @@ index a87b0f44..e1cde4de 100644
  		icon(pgNds ? "nds" : "gamepad", 50, HEAD_ICON_Y, 3);
  		std::string head = lang::tr("Achievements");
  		if (ready && sn.offline) head += SEP + achAsOf(l);
+-		textFit(head, true, 17, 170, HEAD_SECTION_Y, 420, p.muted, false);
+-		textFit(pgTitle, true, 30, 170, HEAD_LABEL_Y, 420, p.ink, true);
++		textFit(head, true, 17, 170, HEAD_SECTION_Y, canvasWidth() - 220, p.muted, false);
++		textFit(pgTitle, true, 30, 170, HEAD_LABEL_Y, canvasWidth() - 220, p.ink, true);
+ 		if (!ready)
+ 		{
+ 			const bool waiting = sn.state == ach::Loader::LOADING || sn.state == ach::Loader::IDENTIFYING;
+-			textFit(waiting ? lang::tr("Loading...") : lang::tr("No list"), true, 22, 170, HEAD_VALUE_Y, 420, p.accent, false);
++			textFit(waiting ? lang::tr("Loading...") : lang::tr("No list"), true, 22, 170, HEAD_VALUE_Y, canvasWidth() - 220, p.accent, false);
+ 			helpText(achStateText(sn.state), HELP_TOP, HELP_BOTTOM, p.muted);
+ 		}
+ 		else
+ 		{
+-			textFit(achCounts(l), true, 20, 170, HEAD_VALUE_Y, 420, p.accent, false);
++			textFit(achCounts(l), true, 20, 170, HEAD_VALUE_Y, canvasWidth() - 220, p.accent, false);
+ 			// the progress bar (the game panel's)
+-			const float bx = 50, bw = 540, by = 148;
++			const float bx = 50, bw = canvasWidth() - 100, by = 148;
+ 			be->fill(X(bx), X(by), X(bw), X(10), p.line);
+ 			if (l.points()) be->fill(X(bx + 2), X(by + 2), X((bw - 4) * l.pointsEarned() / l.points()), X(6), p.accent);
+ 			else be->fill(X(bx + 2), X(by + 2), X((bw - 4) * l.unlocked() / n), X(6), p.accent);
+@@ -299,8 +299,8 @@ namespace banana
+ 			const float y0 = 176;
+ 			if (tex) be->draw(tex, std::round(X(50)), std::round(X(y0)), std::round(X(64)), std::round(X(64)), Color(1, 1, 1, 1));
+ 			else achPlaceholder(p, got, 50, y0, 64);
+-			textFit(it.title, true, 22, 132, y0 + 2, 458, p.ink, true);
+-			textFit(achStatus(it), true, 17, 132, y0 + 34, 458, got ? p.accent : p.muted, false);
++			textFit(it.title, true, 22, 132, y0 + 2, canvasWidth() - 182, p.ink, true);
++			textFit(achStatus(it), true, 17, 132, y0 + 34, canvasWidth() - 182, got ? p.accent : p.muted, false);
+ 			const std::string pts = achPoints(it.points);
+ 			text(pts, false, 15, 132, y0 + 58, p.muted);
+ 			std::string d = it.desc.empty() ? lang::tr("No description.") : it.desc;
+@@ -310,7 +310,7 @@ namespace banana
+ 
+ 		// ---- bottom: the list
+ 		be->beginScreen(1);
+-		box("screen", false, 0, 0, 640, 480);
++		box("screen", false, 0, 0, canvasWidth(), 480);
+ 		box("bubble", false, 18, 14, 604, 54);
+ 		text(lang::tr("Achievements"), true, 22, 38, 28, p.ink);
+ 		if (ready)
 diff --git a/ui/src/settings_bshare.cpp b/ui/src/settings_bshare.cpp
-index e9b10b7d..d1829403 100644
+index e9b10b7d..870c5a41 100644
 --- a/ui/src/settings_bshare.cpp
 +++ b/ui/src/settings_bshare.cpp
-@@ -859,18 +859,18 @@ namespace banana
+@@ -859,23 +859,23 @@ namespace banana
  			Top t = topPanel(r);
  			rnds::Backend* be = ui->be;
  			be->beginScreen(0);
@@ -3273,11 +4053,17 @@ index e9b10b7d..d1829403 100644
  			}
  			be->endScreen();
  
+ 			be->beginScreen(1);
+-			ui->box("screen", false, 0, 0, 640, 480);
++			ui->box("screen", false, 0, 0, ui->canvasWidth(), 480);
+ 			ui->box("bubble", false, 18, 14, 604, 54);
+ 			std::string count = r.empty() ? "" : std::to_string(sel[sub] + 1) + " / " + std::to_string(r.size());
+ 			if (sub == FILES && !marked.empty()) count = std::to_string(marked.size()) + " chosen";
 diff --git a/ui/src/settings_files.cpp b/ui/src/settings_files.cpp
-index 5c8640f9..ff4cd06b 100644
+index 5c8640f9..cd4dbffe 100644
 --- a/ui/src/settings_files.cpp
 +++ b/ui/src/settings_files.cpp
-@@ -1064,17 +1064,17 @@ namespace banana
+@@ -1064,22 +1064,22 @@ namespace banana
  			Top t = topPanel(r);
  			rnds::Backend* be = ui->be;
  			be->beginScreen(0);
@@ -3303,8 +4089,14 @@ index 5c8640f9..ff4cd06b 100644
  			}
  			be->endScreen();
  
+ 			be->beginScreen(1);
+-			ui->box("screen", false, 0, 0, 640, 480);
++			ui->box("screen", false, 0, 0, ui->canvasWidth(), 480);
+ 			ui->box("bubble", false, 18, 14, 604, 54);
+ 			std::string count = r.empty() ? "" : sub == JOB ? plural((long long)r.size(), "item", "items") : std::to_string(sel[sub] + 1) + " / " + std::to_string(r.size());
+ 			if (sub == FOLDER && !marked.empty()) count = std::to_string(marked.size()) + " marked";
 diff --git a/ui/src/settings_gamepanel.cpp b/ui/src/settings_gamepanel.cpp
-index 20f87764..fe986f3a 100644
+index 20f87764..6a2be43c 100644
 --- a/ui/src/settings_gamepanel.cpp
 +++ b/ui/src/settings_gamepanel.cpp
 @@ -359,6 +359,8 @@ namespace banana
@@ -3337,11 +4129,20 @@ index 20f87764..fe986f3a 100644
  	void Settings::gameKeyTap(int code, bool shift, const char* label)
  	{
  		if (code == -1) { gKeyShift ^= 1; return; }	// the shift toggle (sticky: shift then the letters)
+@@ -963,7 +969,7 @@ namespace banana
+ 			for (auto& r : rows) raw->wantBadge(raw, r.badge);
+ 		}
+ 		be->beginScreen(gScreen);
+-		box("screen", false, 0, 0, 640, 480);
++		box("screen", false, 0, 0, canvasWidth(), 480);
+ 		if (gKeysOpen) { gameKeysFrame(p); be->endScreen(); return; }	// (the panel is the keyboard while it is open)
+ 		if (gAchOpen) { gameAchFrame(p); be->endScreen(); return; }	// (and the achievements list while it is)
+ 		bool pk = companion && companion->active();
 diff --git a/ui/src/settings_servers.cpp b/ui/src/settings_servers.cpp
-index 839c31d0..1b0dcc50 100644
+index 839c31d0..a61f5204 100644
 --- a/ui/src/settings_servers.cpp
 +++ b/ui/src/settings_servers.cpp
-@@ -1714,18 +1714,18 @@ namespace banana
+@@ -1714,24 +1714,24 @@ namespace banana
  			Top t = topPanel(r);
  			rnds::Backend* be = ui->be;
  			be->beginScreen(0);
@@ -3369,6 +4170,13 @@ index 839c31d0..1b0dcc50 100644
  				ui->text(plural((long long)outcomes.size(), "done", "done") + " of " + std::to_string(st.n), false, 16, 50, 398, p.muted);
  			}
  			be->endScreen();
+ 
+ 			be->beginScreen(1);
+-			ui->box("screen", false, 0, 0, 640, 480);
++			ui->box("screen", false, 0, 0, ui->canvasWidth(), 480);
+ 			ui->box("bubble", false, 18, 14, 604, 54);
+ 			std::string count = r.empty() ? "" : std::to_string(sel[sub] + 1) + " / " + std::to_string(r.size());
+ 			if (sub == BROWSE && !marked.empty()) count = std::to_string(marked.size()) + " marked";
 diff --git a/ui/src/soft.cpp b/ui/src/soft.cpp
 index e29a2d32..c6e8aaf3 100644
 --- a/ui/src/soft.cpp
@@ -3398,10 +4206,10 @@ index e29a2d32..c6e8aaf3 100644
  	}
  
 diff --git a/ui/src/soft.h b/ui/src/soft.h
-index 746add49..211cbbde 100644
+index 746add49..1f6ef692 100644
 --- a/ui/src/soft.h
 +++ b/ui/src/soft.h
-@@ -51,8 +51,9 @@ namespace banana
+@@ -51,8 +51,10 @@ namespace banana
  	class SoftBackend : public rnds::Backend
  	{
  	public:
@@ -3410,10 +4218,11 @@ index 746add49..211cbbde 100644
 +		SoftBackend(int w, int h, int topWidth = 0);
 +		int width(int screen = 1) const { return widths[screen]; }
 +		int screenWidth(int screen) const override { return widths[screen]; }
++		int currentScreen() const override { return cur; }
  		int height() const { return H; }
  		// the composed screen, 0xXXRRGGBB rows of W words
  		const uint32_t* pixels(int screen) const { return scr[screen].data(); }
-@@ -60,10 +61,10 @@ namespace banana
+@@ -60,10 +62,10 @@ namespace banana
  		Damage takeDamage(int screen) { Damage d = dmg[screen]; dmg[screen] = Damage(); return d; }
  		// everything again (new scanout buffers): the next frame is drawn in full
  		// (the background copy goes too: it is another screen's draws now - a game's panel, 2026-11-03)
@@ -3426,7 +4235,7 @@ index 746add49..211cbbde 100644
  
  		// (touches nothing of the backend's but the new texture: callable from the picture workers)
  		rnds::TexPtr upload(const rnds::Bitmap& b, bool smooth) override;
-@@ -135,6 +136,7 @@ namespace banana
+@@ -135,6 +137,7 @@ namespace banana
  		void doDraw(SoftTex* t, float x, float y, float w, float h, const rnds::Color& tint, const Clip& cl);
  		void doFill(float x, float y, float w, float h, const rnds::Color& c, const Clip& cl);
  		int W, H, cur = 0;

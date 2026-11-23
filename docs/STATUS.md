@@ -17,6 +17,12 @@ Alpha firmware for **Retroid Pocket Duo Lite (SM6125 / Adreno 610)**. Tested on 
 | Audio | Speaker/headphone routes and physical volume controls implemented; headset output/loudness confirmed. Built-in microphone passed an acoustic capture test. Headset microphone capture is user-confirmed after correcting its SoundWire mapping. Alpha31 speaker/headphone hotplug passed the user test; the headphone pop fix was user-confirmed on Alpha32. See AUDIO.md. |
 | Rumble | Alpha33 adds standard gamepad force feedback, BananaDS Rumble Pak hooks and a global on/off switch. CI-build hardware validation pending; see RUMBLE.md. |
 
+## Panel layout
+
+Alpha36 makes the active panel's geometry available through the shared rendering backend. Centred text and full-panel backgrounds use that geometry rather than an assumed 640×480 canvas. Audited paths include update installation/results, language confirmation, welcome cards, notifications, calibration, EQ, settings and the built-in Files/Search pages. The Carts theme uses panel-sized backgrounds and columns; JSON themes receive `W` and evaluate width-dependent variables separately for each panel. Literal coordinates in third-party themes still belong to their authors.
+
+The real-page regression renders equal and unequal panels at 480-, 768- and 960-line scales, checks all five installation states and welcome centring, compares the lower installation screen byte-for-byte, and checks calibration coverage and per-panel theme variables. CI renders the additional settings/setup pages into an artifact for visual review. These checks gate the firmware release build. The installed launcher is updated only through a complete CI firmware release.
+
 ## Emulators
 
 BananaDS runs with the Cortex-A73 target, JIT, Gengis and Banana 2D, including selected 2x rendering. Existing console cores use native GLES/KMS presentation. These settings do not guarantee a particular frame rate in every game.
