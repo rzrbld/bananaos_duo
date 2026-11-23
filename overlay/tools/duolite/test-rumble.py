@@ -102,3 +102,71 @@ with tempfile.TemporaryDirectory(prefix='banana-rumble-test-') as tmp:
     subprocess.run(['cc', '-std=c11', '-Wall', '-Wextra', '-Wno-unused-parameter', '-Werror',
                     '-fsanitize=undefined', '-o', str(binary), str(source)], check=True)
     subprocess.run([str(binary)], check=True)
+
+# Exercise the actual optional-supplier setup under boot failure conditions.
+# A successful routing callback alone cannot detect a gamepad stuck in probe.
+optional = r'''
+#include <assert.h>
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <errno.h>
+#include <stdio.h>
+typedef uint16_t u16;
+struct device_node { int unused; };
+struct device { struct device_node *of_node; bool bound; };
+struct i2c_client { struct device dev; };
+struct rsinput_driver { struct device *haptics; int (*play_rumble)(struct device *,u16,u16); };
+static struct device_node node;
+static struct i2c_client client;
+static bool has_node, has_client, loaded, ready, link_ok, action_ok;
+static int device_refs, module_refs, calls;
+static struct device_node *of_parse_phandle(struct device_node *n,const char *p,int i) { return has_node?&node:NULL; }
+static struct i2c_client *of_find_i2c_device_by_node(struct device_node *n) { if(!has_client)return NULL; device_refs++;return &client; }
+static void of_node_put(struct device_node *n) {}
+static bool device_is_bound(struct device *d) { return d->bound; }
+static void put_device(struct device *d) { assert(d && device_refs>0);device_refs--; }
+static int motor(struct device *d,u16 strong,u16 weak) { calls++;return ready?0:-517; }
+#define symbol_get(name) (loaded ? (module_refs++,motor) : NULL)
+#define symbol_put(name) do { assert(module_refs>0);module_refs--; } while(0)
+#define DL_FLAG_AUTOREMOVE_CONSUMER 1
+static void *device_link_add(struct device *c,struct device *s,int f) { return link_ok?&client:NULL; }
+static void rsinput_release_haptics(void *data) {
+ struct rsinput_driver *drv=data; drv->play_rumble(drv->haptics,0,0);
+ symbol_put(aw86927_rumble);put_device(drv->haptics);
+}
+static int devm_add_action_or_reset(struct device *d,void (*fn)(void *),void *p) {
+ if(action_ok) return 0;
+ fn(p);
+ return -ENOMEM;
+}
+'''
+optional += function(rs, 'rsinput_setup_haptics') + r'''
+int main(void) {
+ struct device dev={.of_node=&node};
+ for(int failure=0;failure<8;failure++) {
+  struct rsinput_driver drv={0};
+  has_node=failure!=0;has_client=failure!=1;client.dev.bound=failure!=2;
+  loaded=failure!=3;ready=failure!=4;link_ok=failure!=5;action_ok=failure!=6;
+  calls=0;assert(!module_refs && !device_refs);
+  rsinput_setup_haptics(&drv,&dev);
+  if(failure<7) {
+   assert(!drv.haptics && !drv.play_rumble);
+   assert(!module_refs && !device_refs);
+   if(failure<4)assert(!calls);
+  } else {
+   assert(drv.play_rumble && device_refs==1 && module_refs==1);
+   rsinput_release_haptics(&drv);assert(!module_refs && !device_refs);
+  }
+ }
+ puts("PASS: absent/failed/unbound motor never blocks gamepad; optional supplier references balanced");
+}
+'''
+assert not re.search(r'\bsymbol_request\s*\(', function(rs, 'rsinput_setup_haptics'))
+assert 'error = rsinput_setup_haptics' not in function(rs, 'rsinput_probe')
+with tempfile.TemporaryDirectory(prefix='banana-optional-rumble-') as tmp:
+    source=Path(tmp)/'test.c'; binary=Path(tmp)/'test'
+    source.write_text(optional)
+    subprocess.run(['cc','-std=c11','-Wall','-Wextra','-Wno-unused-parameter',
+                    '-fsanitize=undefined','-o',str(binary),str(source)],check=True)
+    subprocess.run([str(binary)],check=True)

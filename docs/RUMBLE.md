@@ -11,3 +11,5 @@ BananaDS connects its DS Rumble Pak callbacks to bounded force-feedback effects.
 The motor stops for suspend, device removal and effect-owner exit. Re-enabling rumble or waking the device does not replay old requests. Hardware I/O stays on the supplier's worker; input callbacks do not perform I2C transfers.
 
 Validation so far: ARM64 compile checks for both drivers, launcher and BananaDS; fresh pinned BananaDS plus OS patches matches the compiled source; isolated daemon on/off tests and instrumented tests of the actual kernel routing/gating functions pass. Physical validation of the CI-built Alpha33 remains pending.
+
+The motor is optional. Its absence, failed initialization or unavailable driver must never defer the gamepad or remove buttons/sticks. Standard FF is advertised only when the motor supplier is already bound and ready; a motor that fails to initialize leaves rumble unavailable for that boot.

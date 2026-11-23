@@ -1,5 +1,11 @@
 # Changes
 
+## 0.1.0-alpha.38
+
+- Fixed gamepad registration when the optional rumble motor fails to initialize.
+- Removed synchronous haptic module loading from the asynchronous gamepad probe.
+- Kept button/axis mapping unchanged; expose force feedback only with a ready motor.
+
 ## 0.1.0-alpha.37
 
 - Replaced the old Store with pinned, firmware-built Slopetanium on the home menu.

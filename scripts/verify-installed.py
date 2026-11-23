@@ -60,7 +60,12 @@ for name,info in expected.items():
             assert block, 'Truncated installed component: '+name
             h.update(block);left-=len(block)
     components[name]={'size':info['size'],'sha256':h.hexdigest()}
-print(json.dumps({'version':Path('/etc/banana/release').read_text().strip(),
+# A matching image can still have a failed driver probe. Treat missing basic
+# controls as a failed installed-firmware verification, including optional-FF boots.
+inputs=Path('/proc/bus/input/devices').read_text()
+pad=next((block for block in inputs.split('\\n\\n') if 'Retroid Pocket Duo Lite Gamepad' in block), '')
+assert pad and 'event' in pad, 'Built-in gamepad did not register'
+print(json.dumps({'gamepad_registered':True,'version':Path('/etc/banana/release').read_text().strip(),
                   'running_slot':slot,'components':components}))
 '''.replace('EXPECTED', repr(expected)).replace('USED', str(used))
     command = ['ssh', '-F', '/dev/null', '-o', 'ConnectTimeout=10']

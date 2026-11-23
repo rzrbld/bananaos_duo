@@ -1,0 +1,100 @@
+Subject: input: keep gamepad usable when the optional rumble supplier fails
+
+Do not synchronously request a module or defer the gamepad for haptics.
+Attach FF only to an already bound, ready supplier; ordinary buttons and
+sticks still register when the motor is missing, unbound or failed.
+
+--- a/drivers/input/joystick/rsinput.c
++++ b/drivers/input/joystick/rsinput.c
+@@ -539,7 +539,8 @@
+     put_device(drv->haptics);
+ }
+ 
+-static int rsinput_setup_haptics(struct rsinput_driver *drv, struct device *dev)
++/* Haptics are optional: never defer the gamepad for a motor or module. */
++static void rsinput_setup_haptics(struct rsinput_driver *drv, struct device *dev)
+ {
+     struct device_node *node;
+     struct i2c_client *client;
+@@ -547,26 +548,38 @@
+ 
+     node = of_parse_phandle(dev->of_node, "banana,haptics", 0);
+     if (!node)
+-        return 0;
++        return;
+     client = of_find_i2c_device_by_node(node);
+     of_node_put(node);
+     if (!client)
+-        return -EPROBE_DEFER;
++        return;
+     drv->haptics = &client->dev;
+-    drv->play_rumble = symbol_request(aw86927_rumble);
+-    if (!drv->play_rumble) {
+-        put_device(drv->haptics);
+-        return -EPROBE_DEFER;
+-    }
+-    err = devm_add_action_or_reset(dev, rsinput_release_haptics, drv);
+-    if (err)
+-        return err;
++    if (!device_is_bound(drv->haptics))
++        goto no_device;
++    /* Autoload runs independently from the motor's DT node. A synchronous
++     * symbol_request from this async probe can deadlock module loading. */
++    drv->play_rumble = symbol_get(aw86927_rumble);
++    if (!drv->play_rumble)
++        goto no_device;
+     err = drv->play_rumble(drv->haptics, 0, 0);
+     if (err)
+-        return err;
++        goto no_symbol;
+     if (!device_link_add(dev, drv->haptics, DL_FLAG_AUTOREMOVE_CONSUMER))
+-        return -ENOMEM;
+-    return 0;
++        goto no_symbol;
++    err = devm_add_action_or_reset(dev, rsinput_release_haptics, drv);
++    if (err) {
++        /* The reset action already released both references. */
++        drv->play_rumble = NULL;
++        drv->haptics = NULL;
++    }
++    return;
++
++no_symbol:
++    symbol_put(aw86927_rumble);
++no_device:
++    put_device(drv->haptics);
++    drv->play_rumble = NULL;
++    drv->haptics = NULL;
+ }
+ 
+ static int rsinput_probe(struct serdev_device *serdev) {
+@@ -580,10 +593,6 @@
+     drv = devm_kzalloc(&serdev->dev, sizeof(*drv), GFP_KERNEL);
+     if (!drv)
+     return -ENOMEM;
+-
+-    error = rsinput_setup_haptics(drv, &serdev->dev);
+-    if (error)
+-        return dev_err_probe(&serdev->dev, error, "Haptic supplier unavailable\n");
+ 
+     drv->invert_x = device_property_present(&serdev->dev, "invert-x");
+     drv->invert_y = device_property_present(&serdev->dev, "invert-y");
+@@ -721,11 +730,16 @@
+     }
+ 
+     input_set_drvdata(drv->input, drv);
++    rsinput_setup_haptics(drv, &serdev->dev);
+     if (drv->play_rumble) {
+         input_set_capability(drv->input, EV_FF, FF_RUMBLE);
+         error = input_ff_create_memless(drv->input, NULL, rsinput_play_rumble);
+-        if (error)
+-            return error;
++        if (error) {
++            /* Optional FF allocation must not prevent ordinary input. */
++            __clear_bit(FF_RUMBLE, drv->input->ffbit);
++            __clear_bit(EV_FF, drv->input->evbit);
++            dev_warn(&serdev->dev, "Rumble unavailable: %d; enabling buttons\n", error);
++        }
+     }
+ 
+     error = input_register_device(drv->input);
