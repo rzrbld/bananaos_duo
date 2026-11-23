@@ -1,5 +1,10 @@
 # Changes
 
+## 0.1.0-alpha.39
+
+- Fixed Slopetanium startup on exFAT cards by placing code/data links in RAM.
+- Kept persistent settings, downloads and backups on the data card.
+
 ## 0.1.0-alpha.38
 
 - Fixed gamepad registration when the optional rumble motor fails to initialize.

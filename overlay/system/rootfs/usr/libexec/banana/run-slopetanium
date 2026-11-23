@@ -2,12 +2,15 @@
 # Firmware application: immutable code, writable settings/cache, original PortMaster installer.
 set -e
 export HOME=/data/home XDG_DATA_HOME=/data/home/.local/share XDG_CONFIG_HOME=/data/home/.config XDG_RUNTIME_DIR=/run
-S=/data/slopetanium
+S=/run/banana/slopetanium
+D=/data/slopetanium
 P=/data/roms/ports
-mkdir -p "$S/conf" "$HOME" "$P" /data/store/apps /data/store/tiles
+mkdir -p "$S" "$D/conf" "$HOME" "$P" /data/store/apps /data/store/tiles
+# The data card is exFAT: all symlinks belong on writable RAM, never on /data.
+ln -sfn "$D/conf" "$S/conf"
 # Directory links separate the upstream application's data root from firmware files.
 for entry in app web assets; do ln -sfn "/usr/share/slopetanium/$entry" "$S/$entry"; done
-exec >>"$S/log.txt" 2>&1
+exec >>"$D/log.txt" 2>&1
 export SLOP_SYSTEM_MANAGED=1 SLOP_APPS_DIR=/data/store/apps SLOP_APP_SHORTCUTS_DIR=/data/store/tiles
 export controlfolder="$P/PortMaster"
 # A fresh card gets the original, checksum-pinned upstream package. Existing
