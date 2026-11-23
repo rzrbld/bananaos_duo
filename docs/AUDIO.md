@@ -46,3 +46,24 @@ That test restored the launcher and original library mount. It does not establis
 a new user confirmation of audible output, jack hotplug or microphone behavior;
 those remain separate regression checks. The kernel headphone PA ordering and
 microphone routing are unchanged by this SDL patch.
+
+## Qualcomm stream preparation recovery
+
+The Alpha41 candidate backports the position-reset changes from
+[Michael McAllister's q6asm patch](https://lkml.iu.edu/2610.2/14705.html).
+ALSA prepares a new stream after an underrun and resets its application pointer.
+The old driver retained its submission index and DSP ring positions, allowing the
+hardware stream to remain marked RUNNING with no further buffer progress.
+
+On Alpha40, a silent hardware probe initially submitted 31,680 frames in 0.6 s,
+but only 2,880 after drop/prepare and 1,920 after underrun recovery. GBA DS showed
+the same full ring and stationary hardware pointer while its software queue grew.
+The patch resets the submission position and both DSP ring indices when preparing
+new buffers; it does not change codec routing, amplifier sequencing or volume.
+
+`tools/duolite/test-audio-recovery.c` in the prepared tree is the hardware regression
+probe. Cross-build it with the firmware SDK and `-lasound`, stop other playback
+clients using the device-testing procedure, and run it on the handheld. It writes
+silence, checks initial/drop-prepare/underrun-recovery progress and exits nonzero
+if playback stalls. Kernel compilation alone is not proof of audible output;
+validate the installed driver and listen to the game afterward.

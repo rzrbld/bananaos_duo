@@ -1,5 +1,10 @@
 # Changes
 
+## 0.1.0-alpha.41
+
+- Reset Qualcomm PCM queue and DSP ring positions on stream preparation so audio can recover after underruns instead of remaining silently stalled.
+- Includes the Slopetanium v0.3.2-beta seed for fresh cards; existing independent app updates remain untouched.
+
 ## 0.1.0-alpha.40
 
 - Kept SDL ALSA playback interruptible so closing a game cannot wait forever in a blocked audio write.

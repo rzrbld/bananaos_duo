@@ -45,6 +45,7 @@ jobs:
           if-no-files-found: ignore
       - name: Check shell and Python syntax
         run: |
+          cc -Wall -Wextra -Werror -fsyntax-only build/source/tools/duolite/test-audio-recovery.c
           sh -n scripts/build.sh
           sh -n build/source/system/rootfs/usr/libexec/banana/update
           sh -n build/source/system/rootfs/usr/libexec/banana/update-duolite-boot

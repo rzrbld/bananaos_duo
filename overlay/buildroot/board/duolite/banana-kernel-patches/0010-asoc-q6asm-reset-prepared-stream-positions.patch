@@ -1,0 +1,32 @@
+Subject: ASoC: qcom: q6asm: reset PCM queue and DSP ring on prepare
+
+Adapted from Michael McAllister's upstream submission:
+https://lkml.iu.edu/2610.2/14705.html
+
+After an underrun ALSA prepares a new stream, but stale queue/ring indices
+can prevent further DSP submissions. Reset them with the new mapping.
+A Duo Lite SDL stream reproduced a full buffer with hw_ptr stuck at zero.
+
+--- a/sound/soc/qcom/qdsp6/q6asm-dai.c
++++ b/sound/soc/qcom/qdsp6/q6asm-dai.c
+@@ -243,6 +243,9 @@
+ 		prtd->state = Q6ASM_STREAM_STOPPED;
+ 	}
+ 
++	/* Start every prepared stream at the beginning of its PCM queue. */
++	prtd->queue_ptr = 0;
++
+ 	ret = q6asm_map_memory_regions(substream->stream, prtd->audio_client,
+ 				       prtd->phys,
+ 				       (prtd->pcm_size / prtd->periods),
+--- a/sound/soc/qcom/qdsp6/q6asm.c
++++ b/sound/soc/qcom/qdsp6/q6asm.c
+@@ -514,6 +514,8 @@
+ 
+ 
+ 	ac->port[dir].buf = buf;
++	ac->port[dir].dsp_buf = 0;
++	atomic_set(&ac->port[dir].hw_ptr, 0);
+ 
+ 	buf[0].phys = phys;
+ 	buf[0].size = period_sz;
