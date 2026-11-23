@@ -1,0 +1,474 @@
+--- a/ui/rnds/RndsUI.cpp
++++ b/ui/rnds/RndsUI.cpp
+@@ -1,4 +1,5 @@
+ #include "RndsUI.h"
++#include "HomeGrid.h"
+ 
+ #include <algorithm>
+ #include <cmath>
+@@ -296,7 +297,7 @@
+ 		int action = 0;		// what a tap does
+ 	};
+ 
+-	enum Action { ACT_NONE = 0, ACT_PREV, ACT_NEXT, ACT_OPEN, ACT_BACK, ACT_FAV, ACT_RESUME, ACT_SLOT, ACT_RAIL };
++	enum Action { ACT_NONE = 0, ACT_PREV, ACT_NEXT, ACT_OPEN, ACT_BACK, ACT_FAV, ACT_RESUME, ACT_SLOT, ACT_RAIL, ACT_ZOOM_OUT, ACT_ZOOM_IN, ACT_HOME_PORTS, ACT_HOME_EDIT, ACT_HOME_PREV, ACT_HOME_NEXT };
+ 
+ 	struct UI::Impl
+ 	{
+@@ -1100,6 +1101,92 @@
+ 			gameCache.clear();
+ 		}
+ 
++		bool homeEdit = false;
++		std::string heldHome;
++		int heldIndex = -1;
++
++		HomeGrid homeGrid() { return HomeGrid(src->homeRows(), sysCount(), ui->mSys, be->layoutWidth(1,s)); }
++		void zoomHome(int delta) { src->setHomeRows(src->homeRows()+delta); render(false); }
++		void finishHome() { heldHome.clear(); heldIndex=-1; homeEdit=false; render(false); }
++		void placeHome()
++		{
++			if (!homeEdit || sysCount()==0) return;
++			if (heldHome.empty()) { heldHome=sys(ui->mSys).id; heldIndex=ui->mSys; }
++			else {
++				int from=-1;
++				for(int i=0;i<sysCount();++i) if(sys(i).id==heldHome) from=i;
++				int to=ui->mSys;
++				if(from>=0 && src->moveHome(from,to)) { dataChanged(); setSystem(to); }
++				heldHome.clear(); heldIndex=-1;
++			}
++			render(false);
++		}
++		void toggleHomePorts()
++		{
++			if (!heldHome.empty()) return;
++			std::string id=sysCount() ? sys(ui->mSys).id : "";
++			src->setHomePorts(!src->homePorts()); dataChanged();
++			int at=0; for(int i=0;i<sysCount();++i) if(sys(i).id==id) at=i;
++			setSystem(at); render(false);
++		}
++		void homeVertical(int dir) { setSystem(homeGrid().vertical(ui->mSys,dir)); }
++		void homePage(int dir) {
++			if(sysCount()) setSystem(std::clamp(ui->mSys+dir*homeGrid().capacity,0,sysCount()-1));
++		}
++		int hitHome(float x,float y,int& slot)
++		{
++			float w=homeGrid().width;
++			if(y>=390 && y<430) {
++				if(x>=20 && x<76) return ACT_ZOOM_OUT;
++				if(x>=84 && x<140) return ACT_ZOOM_IN;
++				if(homeEdit && x>=w-310 && x<w-140) return ACT_HOME_PORTS;
++				if(homeEdit && x>=w-130 && x<w-20) return ACT_HOME_EDIT;
++			}
++			if(y>=10 && y<48) {
++				if(x<70) return ACT_HOME_PREV;
++				if(x>w-70) return ACT_HOME_NEXT;
++			}
++			slot=homeGrid().hit(x,y);
++			return slot<0 ? ACT_NONE : ACT_SLOT;
++		}
++		void drawHome()
++		{
++			be->beginScreen(1);
++			const auto g=homeGrid(); float w=g.width;
++			if(!wallBottom.empty()) drawSprite(still("wall-bottom",wallBottom,true),0,0);
++			drawBox(screenBox(!wallBottom.empty()),0,0,w,480);
++			drawBox(bubbleBox(),12,60,w-24,318);
++			drawFit("<",ts(true,24),20,18,28,40,INK,false,true);
++			drawFit(">",ts(true,24),w-60,18,28,40,INK,false,true);
++			std::string title=homeEdit ? (heldHome.empty() ? "Edit home menu" : "Choose a position") : (sysCount() ? sys(ui->mSys).name : "Home menu");
++			drawFit(title,ts(true,24),72,15,30,w-144,INK,true,true);
++			std::string sub=std::to_string(sysCount() ? g.first/g.capacity+1 : 1)+" / "+std::to_string(std::max(1,(sysCount()+g.capacity-1)/g.capacity));
++			if(homeEdit && !heldHome.empty()) for(int i=0;i<sysCount();++i) if(sys(i).id==heldHome) sub="Moving: "+sys(i).name;
++			drawFit(sub,ts(false,16),24,65,20,w-48,MUTED,false,true);
++			for(int i=g.first;i<std::min(sysCount(),g.first+g.capacity);++i) {
++				const auto& si=sys(i); float x=g.x(i),y=g.y(i); bool selected=i==ui->mSys;
++				drawBox(slotBox(selected),x,y,g.icon,g.icon);
++				Sprite ic=icon(si.icon);
++				if(ic.valid()) be->draw(ic.tex,X(x+g.icon/12),X(y+g.icon/12),X(g.icon*5/6),X(g.icon*5/6),Color(1,1,1,1));
++				if(si.id==heldHome) drawBox(badgeBox(),x+g.icon-12,y+3,10,10);
++				Verbatim vb;
++				drawFit(si.name,ts(false,g.rows>=3 ? 12 : 16),x-(g.cellWidth-g.icon)/2+2,y+g.icon+3,18,g.cellWidth-4,selected?INK:MUTED,false,true);
++			}
++			auto button=[&](const std::string& label,float x,float width) {
++				drawBox(kbdBox(),x,390,width,40);
++				drawFit(label,ts(true,18),x+5,400,22,width-10,P.kbdInk,false,true);
++			};
++			button("-",20,56); button("+",84,56);
++			drawFit(std::to_string(g.rows)+(g.rows==1?" row":" rows"),ts(false,16),150,401,20,96,INK,false);
++			if(homeEdit) {
++				button(src->homePorts()?"Ports: home":"Ports: shelf",w-310,170);
++				button("X  Done",w-130,110);
++			}
++			std::string hint=homeEdit ? (heldHome.empty()?"A Pick up  B Done  L/R Zoom  Y Ports":"A Place  B Cancel  L/R Zoom") : "A Open  X Edit  START Settings  SELECT Search";
++			drawFit(hint,ts(false,16),18,448,20,w-36,MUTED,false,true);
++			be->endScreen();
++		}
++
+ 		// ---- input ----
+ 		void setSystem(int i)
+ 		{
+@@ -1990,6 +2077,7 @@
+ 
+ 		void drawBottom()
+ 		{
++			if (ui->mView == HOME) { drawHome(); return; }
+ 			be->beginScreen(1);
+ 			if (!wallBottom.empty()) drawSprite(still("wall-bottom", wallBottom, true), 0, 0);
+ 			drawBox(screenBox(!wallBottom.empty()), 0, 0, 640, 480);
+@@ -2251,6 +2339,7 @@
+ 		// ---- touch hit tests (CSS px of the bottom screen) ----
+ 		int hit(float x, float y, int& slotIndex, int& side)
+ 		{
++			if (ui->mView == HOME) { side=-1; slotIndex=-1; return hitHome(x,y,slotIndex); }
+ 			Geo g = geometry();
+ 			View v = ui->mView;
+ 			slotIndex = -1; side = -1;
+@@ -2291,6 +2380,12 @@
+ 		{
+ 			switch (a)
+ 			{
++			case ACT_ZOOM_OUT: zoomHome(1); break;
++			case ACT_ZOOM_IN: zoomHome(-1); break;
++			case ACT_HOME_PORTS: toggleHomePorts(); break;
++			case ACT_HOME_EDIT: finishHome(); break;
++			case ACT_HOME_PREV: homePage(-1); break;
++			case ACT_HOME_NEXT: homePage(1); break;
+ 			case ACT_PREV: if (!page(-1)) nudge(-1); break;		// (a game list: a page, as L)
+ 			case ACT_NEXT: if (!page(1)) nudge(1); break;
+ 			case ACT_OPEN: open(); break;
+@@ -2298,7 +2393,7 @@
+ 			case ACT_FAV: toggleFav(); break;
+ 			case ACT_RESUME: resume(); break;
+ 			case ACT_SLOT:
+-				if (ui->mView == HOME) { if (slot == ui->mSys) open(); else setSystem(slot); }
++				if (ui->mView == HOME) { if(homeEdit) { setSystem(slot); placeHome(); } else if (slot == ui->mSys) open(); else setSystem(slot); }
+ 				else if (ui->mView == LIBRARY) { if (slot == ui->mGame) open(); else setGame(slot); }
+ 				break;
+ 			}
+@@ -2366,14 +2461,29 @@
+ 
+ 	void UI::dataChanged()
+ 	{
++		d->heldHome.clear(); d->heldIndex=-1;
+ 		d->dataChanged();
+ 		int n = d->count();
+ 		if ((int)d->slots.size() != n)
+ 			d->layout(false);
+ 	}
+ 
++	bool UI::editingHome() const { return mView==HOME && d->homeEdit; }
++
+ 	bool UI::press(Button b)
+ 	{
++		if(mView==HOME) {
++			if(b==X) { if(d->homeEdit) d->finishHome(); else { d->homeEdit=true; d->render(false); } return true; }
++			if(b==B && d->homeEdit) {
++				if(!d->heldHome.empty()) { int at=d->heldIndex; d->heldHome.clear(); d->heldIndex=-1; d->setSystem(at); }
++				else d->finishHome();
++				return true;
++			}
++			if(b==A && d->homeEdit) { d->placeHome(); return true; }
++			if(b==Y && d->homeEdit) { d->toggleHomePorts(); return true; }
++			if(b==UP || b==DOWN) { d->homeVertical(b==UP?-1:1); return true; }
++			if(b==L || b==R) { if(d->homeEdit) d->zoomHome(b==L?1:-1); else d->homePage(b==L?-1:1); return true; }
++		}
+ 		switch (b)
+ 		{
+ 		case LEFT: d->nudge(-1); return true;
+@@ -2425,7 +2535,7 @@
+ 		float dx = cx - d->downX, dy = cy - d->downY;
+ 		if (std::fabs(dx) > 56 && std::fabs(dx) > std::fabs(dy) * 1.2f)
+ 		{
+-			d->nudge(dx < 0 ? 1 : -1);
++			if(mView==HOME) d->homePage(dx<0?1:-1); else d->nudge(dx < 0 ? 1 : -1);
+ 			return true;
+ 		}
+ 		int slot, side;
+--- a/ui/rnds/RndsUI.h
++++ b/ui/rnds/RndsUI.h
+@@ -74,6 +74,11 @@
+ 		virtual bool online() = 0;
+ 
+ 		// actions
++		virtual int homeRows() { return 1; }
++		virtual void setHomeRows(int) {}
++		virtual bool homePorts() { return false; }
++		virtual void setHomePorts(bool) {}
++		virtual bool moveHome(int, int) { return false; }
+ 		virtual void selectSystem(int i) = 0;	// the home cursor moved
+ 		virtual void selectGame(int i) = 0;		// the library cursor moved
+ 		virtual int openLibrary(int sys) = 0;	// home -> library: the game index to start on
+@@ -196,6 +201,7 @@
+ 
+ 		// input: true when used
+ 		enum Button { LEFT, RIGHT, UP, DOWN, A, B, X, Y, L, R };
++		bool editingHome() const;
+ 		bool press(Button b);
+ 		void jumpTo(int game);					// the library's cursor straight to a game (jump to a letter)
+ 		bool touch(int screen, float x, float y, bool down);	// device px of that screen
+--- a/ui/src/library.cpp
++++ b/ui/src/library.cpp
+@@ -350,6 +350,15 @@
+ 
+ 	void Library::loadState()
+ 	{
++		homeRowCount = 1; showHomePorts = false; homeOrder.clear();
++		std::ifstream layout(dataDir + "/home-layout.conf");
++		std::string entry;
++		while (std::getline(layout, entry)) {
++			if (entry.compare(0, 5, "rows=") == 0) homeRowCount = std::max(1, std::min(4, atoi(entry.c_str()+5)));
++			else if (entry == "ports=1") showHomePorts = true;
++			else if (entry.compare(0, 6, "order=") == 0 && entry.size() > 6 &&
++				std::find(homeOrder.begin(), homeOrder.end(), entry.substr(6)) == homeOrder.end()) homeOrder.push_back(entry.substr(6));
++		}
+ 		favGames.clear(); favSystems.clear(); stats.clear();
+ 		std::string ln;
+ 		{
+@@ -432,6 +441,67 @@
+ 		for (auto& kv : titles) out += kv.first + "\t" + kv.second.name + "\t" + kv.second.sort + "\n";
+ 		writeAtomic(dataDir + "/game-titles.tsv", out);
+ 		scan();
++	}
++
++	void Library::saveHomeLayout()
++	{
++		std::string out = "rows=" + std::to_string(homeRowCount) + "\nports=" + (showHomePorts ? "1\n" : "0\n");
++		for (const auto& id : homeOrder) out += "order=" + id + "\n";
++		writeAtomic(dataDir + "/home-layout.conf", out);
++	}
++
++	void Library::setHomeRows(int rows)
++	{
++		homeRowCount = std::max(1, std::min(4, rows)); saveHomeLayout();
++	}
++
++	void Library::setHomePorts(bool show)
++	{
++		showHomePorts = show; saveHomeLayout(); scan();
++	}
++
++	bool Library::moveHome(int from, int to)
++	{
++		if (from < 0 || to < 0 || from >= systemCount() || to >= systemCount() || shelves[from].search || shelves[to].search) return false;
++		if (from == to) return true;
++		// Store stable IDs, never indices: installing/removing an app must not move another tile.
++		auto order = homeOrder;
++		std::vector<std::string> visible;
++		for (const auto& sh : shelves) if (!sh.search) visible.push_back(sh.def.id);
++		std::string id = shelves[from].def.id, target = shelves[to].def.id;
++		visible.erase(std::find(visible.begin(), visible.end(), id));
++		auto at = std::find(visible.begin(), visible.end(), target);
++		if (from < to) ++at;
++		visible.insert(at, id);
++		// Retain entries for temporarily absent apps/ROM shelves too.
++		homeOrder = visible;
++		for (const auto& old : order) if (std::find(homeOrder.begin(), homeOrder.end(), old) == homeOrder.end()) homeOrder.push_back(old);
++		saveHomeLayout(); arrangeHome(); return true;
++	}
++
++	void Library::arrangeHome()
++	{
++		std::vector<std::string> old;
++		for (const auto& sh : shelves) old.push_back(sh.def.id);
++		auto group = [this](const Shelf& sh) {
++			if (sh.search) return -1;
++			if (sh.favorites) return 2;
++			return sh.def.appTile || lookOf(sh.def.id).app || sh.def.run.compare(0,7,"banana:")==0 ? 1 : 0;
++		};
++		auto rank = [this](const Shelf& sh) {
++			auto it = std::find(homeOrder.begin(), homeOrder.end(), sh.def.id);
++			return it == homeOrder.end() ? (int)homeOrder.size() : (int)(it-homeOrder.begin());
++		};
++		std::stable_sort(shelves.begin(), shelves.end(), [&](const Shelf& a, const Shelf& b) {
++			if (a.search != b.search) return a.search;
++			int ra = rank(a), rb = rank(b);
++			if (ra != rb) return ra < rb;
++			int ga = group(a), gb = group(b);
++			return ga != gb ? ga < gb : a.order < b.order;
++		});
++		std::vector<int> remap(old.size());
++		for (int i=0; i<systemCount(); ++i) remap[std::find(old.begin(), old.end(), shelves[i].def.id)-old.begin()] = i;
++		for (auto& sh : shelves) if (sh.favorites) for (int& s : sh.sysOf) s = remap[s];
+ 	}
+ 
+ 	void Library::saveFavs()
+@@ -749,6 +819,18 @@
+ 			}
+ 			else if (launchable || def.always || mode == "show") shelves.push_back(sh);
+ 		}
++		if (showHomePorts) {
++			std::vector<Shelf> tiles;
++			for (const auto& sh : shelves) if (sh.def.id == "ports") for (const auto& g : sh.games) {
++				// Keep the manager in its shelf. Only installed games get optional home shortcuts.
++				if (lower(g.path.substr(g.path.find_last_of('/')+1)) == "portmaster.sh") continue;
++				Shelf tile = sh; tile.def.id = "port:" + g.rel; tile.def.name = g.title;
++				tile.def.portTile = tile.def.appTile = true;
++				tile.def.icon = g.box.empty() ? assets + "/icons/ports.png" : g.box;
++				tile.games = {g}; tiles.push_back(tile);
++			}
++			shelves.insert(shelves.end(), tiles.begin(), tiles.end());
++		}
+ 		arrange();
+ 		if (lib >= (int)shelves.size()) lib = 0;
+ 	}
+@@ -789,7 +871,7 @@
+ 		std::vector<SearchWord> words = searchWords(q);
+ 		int n = 0;
+ 		for (auto& sh : shelves)
+-			if (!sh.favorites)
++			if (!sh.favorites && !sh.def.portTile)
+ 				for (auto& g : sh.games) n += searchMatch(g, words);
+ 		return n;
+ 	}
+@@ -810,7 +892,7 @@
+ 		fav.def.id = "favorites"; fav.def.name = "Favorites"; fav.def.maker = "Collection";
+ 		for (int s = 0; s < (int)shelves.size(); s++)
+ 			for (auto& g : shelves[s].games)
+-				if (g.fav) { fav.games.push_back(g); fav.sysOf.push_back(s); }
++				if (!shelves[s].def.portTile && g.fav) { fav.games.push_back(g); fav.sysOf.push_back(s); }
+ 		std::sort(fav.games.begin(), fav.games.end(), [](const Game& a, const Game& b) { return sortKey(a) < sortKey(b); });
+ 		// sysOf follows the sort: find each game's system again by its path
+ 		for (size_t k = 0; k < fav.games.size(); k++)
+@@ -847,7 +929,7 @@
+ 			rec.def.id = "recently-played"; rec.def.name = "Recently played"; rec.def.maker = "Collection";
+ 			std::vector<std::pair<time_t, std::pair<int, size_t>>> played;	// last play, (system, game)
+ 			for (int s = 0; s < (int)shelves.size(); s++)
+-				if (!shelves[s].favorites)
++				if (!shelves[s].favorites && !shelves[s].def.portTile)
+ 					for (size_t i = 0; i < shelves[s].games.size(); i++)
+ 						if (shelves[s].games[i].last > 0) played.push_back({ shelves[s].games[i].last, { s, i } });
+ 			std::sort(played.begin(), played.end(), [](const auto& a, const auto& b) { return a.first > b.first; });
+@@ -868,7 +950,7 @@
+ 			srch.def.id = "search"; srch.def.name = "Search"; srch.def.maker = "\u201c" + query + "\u201d";
+ 			for (int s = 0; s < (int)shelves.size(); s++)
+ 			{
+-				if (shelves[s].favorites) continue;
++				if (shelves[s].favorites || shelves[s].def.portTile) continue;
+ 				for (auto& g : shelves[s].games)
+ 				{
+ 					if (searchMatch(g, words)) { srch.games.push_back(g); srch.sysOf.push_back(s + 1); }	// (+1: the systems move one along)
+@@ -882,6 +964,7 @@
+ 			for (auto& sh : shelves) if (sh.favorites) for (int& s : sh.sysOf) s++;
+ 			shelves.insert(shelves.begin(), sorted);
+ 		}
++		arrangeHome();
+ 		if (lib >= (int)shelves.size()) lib = 0;
+ 		changed = false;
+ 	}
+@@ -891,6 +974,11 @@
+ 		if (shelf < 0 || shelf >= (int)shelves.size()) return nullptr;
+ 		Shelf& sh = shelves[shelf];
+ 		if (game < 0 || game >= (int)sh.games.size()) return nullptr;
++		if (sh.def.portTile) {
++			for (int s=0; s<systemCount(); ++s) if (shelves[s].def.id == "ports")
++				for (auto& g : shelves[s].games) if (g.path == sh.games[game].path) { if (sys) *sys=s; return &g; }
++			return nullptr;
++		}
+ 		if (!sh.favorites) { if (sys) *sys = shelf; return &sh.games[game]; }
+ 		int s = sh.sysOf[game];
+ 		if (sys) *sys = s;
+@@ -929,7 +1017,7 @@
+ 		saveStats();
+ 		g->plays = st.plays; g->seconds = st.seconds; g->last = st.last; g->achA = st.achA; g->achB = st.achB;
+ 		changed = true;	// Recently played is arranged again once the shelf shows
+-		if (shelves[lib].favorites) { Game& f = shelves[lib].games[game]; f.plays = st.plays; f.seconds = st.seconds; f.last = st.last; f.achA = st.achA; f.achB = st.achB; }
++		if (shelves[lib].favorites || shelves[lib].def.portTile) { Game& f = shelves[lib].games[game]; f.plays = st.plays; f.seconds = st.seconds; f.last = st.last; f.achA = st.achA; f.achB = st.achB; }
+ 	}
+ 
+ 	// ---- Source -----------------------------------------------------------------------------------------------------
+--- a/ui/src/library.h
++++ b/ui/src/library.h
+@@ -19,6 +19,7 @@
+ 		std::vector<std::string> exts;	// lower case, no dot
+ 		bool always = false;			// on the shelf with no games (the DS: a fresh card shows where games go)
+ 		bool flat = false;				// games only in the folder itself (ports: their own folders hold scripts too)
++		bool portTile = false;
+ 		bool appTile = false;
+ 		std::string icon;
+ 		std::string changed;			// a command run when its folder changes (Game & Watch: names and covers)
+@@ -97,6 +98,11 @@
+ 		bool onlineSeen = false;
+ 
+ 		// rnds::Source
++		int homeRows() override { return homeRowCount; }
++		void setHomeRows(int rows) override;
++		bool homePorts() override { return showHomePorts; }
++		void setHomePorts(bool show) override;
++		bool moveHome(int from, int to) override;
+ 		int systemCount() override { return (int)shelves.size(); }
+ 		rnds::SysInfo system(int i) override;
+ 		int gameCount() override;
+@@ -145,6 +151,11 @@
+ 		bool changed = false;
+ 		std::string query;
+ 
++		int homeRowCount = 1;
++		bool showHomePorts = false;
++		std::vector<std::string> homeOrder;
++		void saveHomeLayout();
++		void arrangeHome();
+ 		void loadDefs();
+ 		void loadLooks();
+ 		void loadState();
+--- a/ui/src/main.cpp
++++ b/ui/src/main.cpp
+@@ -999,6 +999,7 @@
+ 			// (as the handheld's own loop: no search and no settings while a game is being started, and X only on a game
+ 			// that is there - a search with no result has none; a script that did either crashed the test run)
+ 			if (!settings.isOpen() && ui.view() == rnds::UI::LAUNCH && (it->second == Key::SELECT || it->second == Key::START)) { logf("press %s: ignored (launching)", b.c_str()); continue; }
++			if (!settings.isOpen() && ui.editingHome() && (it->second == Key::SELECT || it->second == Key::START)) continue;
+ 			if (!settings.isOpen() && it->second == Key::SELECT) { settings.openSearch(lib.searchQuery()); logf("press select: search open"); continue; }
+ 			if (!settings.isOpen() && it->second == Key::X && ui.view() == rnds::UI::LIBRARY && ui.gameIndex() >= 0 && ui.gameIndex() < lib.gameCount())
+ 			{
+@@ -1011,7 +1012,7 @@
+ 				logf("game page title: %s", lib.gameAt(ui.gameIndex()).title.c_str());
+ 				continue;
+ 			}
+-			if (!settings.isOpen() && (it->second == Key::A || it->second == Key::X) && ui.view() == rnds::UI::HOME && ui.systemIndex() >= 0 &&
++			if (!settings.isOpen() && (it->second == Key::A && !ui.editingHome()) && ui.view() == rnds::UI::HOME && ui.systemIndex() >= 0 &&
+ 				ui.systemIndex() < lib.systemCount() && openPage(settings, internalPage(lib.shelf(ui.systemIndex()).def)))
+ 			{
+ 				logf("press %s: %s open", b.c_str(), lib.shelf(ui.systemIndex()).def.run.c_str());
+@@ -2601,6 +2602,7 @@
+ 				return;
+ 			}
+ 		}
++		if (ev.type == InputEvent::PRESS && ui->editingHome() && (ev.key == Key::SELECT || ev.key == Key::START)) return;
+ 		if (ev.type == InputEvent::PRESS && ev.key == Key::SELECT)
+ 		{
+ 			// SELECT: the keyboard, to search the games
+@@ -2631,7 +2633,7 @@
+ 		if (ev.type == InputEvent::TOUCH_MOVE) { std::lock_guard<std::mutex> l(worker.uiLock); dirty |= ui->touchMove(ev.screen, ev.x, ev.y); return; }
+ 		if (ev.type == InputEvent::TOUCH_UP) { std::lock_guard<std::mutex> l(worker.uiLock); dirty |= ui->touch(ev.screen, ev.x, ev.y, false); return; }
+ 		if (ev.type == InputEvent::RELEASE) { if (rep.key == ev.key) rep.key = Key::NONE; return; }
+-		if (ev.type == InputEvent::PRESS && (ev.key == Key::A || ev.key == Key::X))
++		if (ev.type == InputEvent::PRESS && ev.key == Key::A && !ui->editingHome())
+ 		{
+ 			// A or X on an internal page's tile (Files): its page
+ 			std::lock_guard<std::mutex> l(worker.uiLock);
+--- a/ui/src/menu.h
++++ b/ui/src/menu.h
+@@ -19,6 +19,7 @@
+ 		virtual View view() const = 0;
+ 		virtual int systemIndex() const = 0;
+ 		virtual int gameIndex() const = 0;
++		virtual bool editingHome() const { return false; }
+ 		virtual bool press(Button b) = 0;
+ 		virtual bool touch(int screen, float x, float y, bool down) = 0;
+ 		virtual bool touchMove(int screen, float x, float y) = 0;
+@@ -48,6 +49,7 @@
+ 		View view() const override { return ui.view(); }
+ 		int systemIndex() const override { return ui.systemIndex(); }
+ 		int gameIndex() const override { return ui.gameIndex(); }
++		bool editingHome() const override { return ui.editingHome(); }
+ 		bool press(Button b) override { return ui.press(b); }
+ 		bool touch(int screen, float x, float y, bool down) override { return ui.touch(screen, x, y, down); }
+ 		bool touchMove(int screen, float x, float y) override { return ui.touchMove(screen, x, y); }
+--- a/ui/Makefile
++++ b/ui/Makefile
+@@ -98,0 +99,4 @@
++tests/home-layout-test: tests/home-layout-test.cpp $(filter-out src/main.cpp,$(SRC)) $(STOCK_OBJ) $(RC_OBJ) $(wildcard src/*.h rnds/*.h)
++	$(CXX) $(CXXFLAGS) $(UI_FLAGS) $(LDFLAGS) -o $@ tests/home-layout-test.cpp $(filter-out src/main.cpp,$(SRC)) $(RC_OBJ) $(STOCK_OBJ) $(UI_LIBS) $(LDLIBS)
++
++

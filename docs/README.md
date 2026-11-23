@@ -14,6 +14,7 @@ of reconstructing project policy from old chat or bring-up logs.
 | [INSTALL.md](INSTALL.md) | SD installation and unchanged OpenABL installer |
 | [UPDATES.md](UPDATES.md) | Update feed, A/B contract and installed-image verification |
 | [STATUS.md](STATUS.md) | User-facing hardware and emulator support |
+| [HOME-MENU.md](HOME-MENU.md) | Home icon editing, row density and optional port shortcuts |
 | [AUDIO.md](AUDIO.md) | Codec routing, microphones, jack changes and pop fixes |
 | [RUMBLE.md](RUMBLE.md) | Optional force feedback and emulator requirements |
 

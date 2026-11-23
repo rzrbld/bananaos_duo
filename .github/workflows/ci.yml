@@ -29,6 +29,8 @@ jobs:
           make host
           make tests/plane-selection-test tests/scanout-test tests/splash-test
           make ALSA=0 CXXFLAGS=-O0 tests/settings-layout-test
+          make ALSA=0 CXXFLAGS=-O0 tests/home-layout-test
+          tests/home-layout-test assets/rnds "$RUNNER_TEMP/home-layout"
           make tests/app-tiles-test
           tests/app-tiles-test "$RUNNER_TEMP/app-tiles"
           tests/plane-selection-test
