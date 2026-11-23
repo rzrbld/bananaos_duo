@@ -17,6 +17,9 @@ cp "$HERE/RELEASE" "$T/etc/banana/release"
 # Retire the old Store; preserve all user apps and PortMaster on /data.
 rm -rf "$T/usr/share/banana/apps/store"
 rm -f "$T/usr/bin/rocknixds-store-ui" "$T/usr/libexec/banana/run-store"
+cp "$HERE/../../../tools/duolite/duolite-nearest.frag" "$T/usr/share/banana/duolite/"
+cp "$HERE/retroarch.cfg" "$T/usr/share/banana/duolite/retroarch.cfg"
+cat "$HERE/../../../system/rootfs/etc/banana/systems.conf" "$HERE/systems-extra.conf" > "$T/etc/banana/systems.conf"
 mkdir -p "$T/usr/share/libretro/autoconfig/sdl2"
 cp "$HERE/retroid-sdl2.cfg" "$T/usr/share/libretro/autoconfig/sdl2/retroid-duolite.cfg"
 if [ -f "$T/usr/bin/retroarch" ]; then
