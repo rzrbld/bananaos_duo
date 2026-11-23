@@ -1,15 +1,43 @@
 From: Codex <noreply@openai.com>
-Subject: [PATCH] audio: keep ALSA playback nonblocking during shutdown
+Subject: [PATCH] audio: keep ALSA playback interruptible and recover underruns
 
 SDL_CloseAudioDevice joins the playback thread after clearing enabled. A
-blocking snd_pcm_writei can wait forever on the handheld's ALSA shared PCM
-and never observe that flag. Use SDL's existing nonblocking playback path,
-which waits for space and retries writes while checking enabled.
+blocking snd_pcm_writei can wait forever on the handheld's shared PCM and
+never observe that flag. Use SDL's existing nonblocking playback path.
+Recover startup underruns in WaitDevice instead of disconnecting a usable
+device; PlayDevice already recovers the same errors.
 
 --- a/src/audio/alsa/SDL_alsa_audio.c
 +++ b/src/audio/alsa/SDL_alsa_audio.c
-@@ -25,3 +25,3 @@
+@@ -23,7 +23,7 @@
+ #ifdef SDL_AUDIO_DRIVER_ALSA
+ 
  #ifndef SDL_ALSA_NON_BLOCKING
 -#define SDL_ALSA_NON_BLOCKING 0
 +#define SDL_ALSA_NON_BLOCKING 1
  #endif
+ 
+ /* without the thread, you will detect devices on startup, but will not get futher hotplug events. But that might be okay. */
+@@ -247,11 +247,17 @@
+     while (SDL_AtomicGet(&this->enabled)) {
+         const snd_pcm_sframes_t rc = ALSA_snd_pcm_avail(this->hidden->pcm_handle);
+         if ((rc < 0) && (rc != -EAGAIN)) {
+-            /* Hmm, not much we can do - abort */
+-            fprintf(stderr, "ALSA snd_pcm_avail failed (unrecoverable): %s\n",
+-                    ALSA_snd_strerror(rc));
+-            SDL_OpenedAudioDeviceDisconnected(this);
+-            return;
++            /* An underrun during startup is recoverable, just as in
++               PlayDevice. Keep the device connected after preparing it. */
++            const int status = ALSA_snd_pcm_recover(this->hidden->pcm_handle, rc, 0);
++            if (status < 0) {
++                SDL_LogError(SDL_LOG_CATEGORY_AUDIO,
++                             "ALSA snd_pcm_avail failed (unrecoverable): %s\n",
++                             ALSA_snd_strerror(status));
++                SDL_OpenedAudioDeviceDisconnected(this);
++                return;
++            }
++            continue;
+         } else if (rc < needed) {
+             const Uint32 delay = ((needed - (SDL_max(rc, 0))) * 1000) / this->spec.freq;
+             SDL_Delay(SDL_max(delay, 10));
