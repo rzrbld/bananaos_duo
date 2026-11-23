@@ -39,6 +39,8 @@ Console icons appear before games are added. Copy your own games into the folder
 
 GB/GBC, GBA, NES, SNES, Mega Drive, PlayStation, N64, PICO-8, C64 and ZX Spectrum are also included. MAME needs a **MAME 2003-Plus** ROM set. 3DS needs decrypted dumps or homebrew; CIA installation is not implemented. See [STATUS.md](docs/STATUS.md) for display and performance limits.
 
+The standard home launcher groups emulators before apps. Press **X** to edit icon order, **A** to pick up/place and **B** to cancel a move. Touch **− / +** (or **L / R** while editing) chooses one to four rows. **Y** in editing toggles installed ports on home. The layout stays on writable storage across updates; see [Home menu](docs/HOME-MENU.md).
+
 The original BananaOS in-game menu provides save/load, resume, brightness, restart and quit. **F + X** opens it. Built-in rumble has a global On/Off switch under Display & sound; see [RUMBLE.md](docs/RUMBLE.md) for game/emulator requirements. Slopetanium has its own home-menu tile. It installs PortMaster packages into `roms/ports`, where both PortMaster and the Ports shelf find them. Native Linux apps from their original GitHub releases get individual home-menu tiles; their files stay in `/data/store/apps` and shortcuts in `/data/store/tiles`. PortMaster and individual ports remain free to update themselves; Slopetanium runs from `/data/slopetanium/packages` and updates independently through its own upstream releases. Its settings, cache and backups stay in `/data/slopetanium/conf`; firmware only seeds a missing installation. On a fresh card, its first launch downloads and verifies the unchanged upstream PortMaster package if Wi-Fi is available.
 
 ## Build and contribute
