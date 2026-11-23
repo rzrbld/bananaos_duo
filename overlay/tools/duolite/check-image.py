@@ -126,7 +126,8 @@ for rel in ['etc/init.d/rcS','etc/inittab', 'usr/libexec/banana/duolite-service'
             'usr/libexec/banana/duolite-early-log', 'usr/libexec/banana/duolite-clock']:
     assert cat(rel) == (source/'buildroot/board/duolite/rootfs'/rel).read_bytes(), rel
 for rel in ['usr/libexec/banana/wifi','usr/libexec/banana/ssh','usr/libexec/banana/run-bananads',
-            'usr/libexec/banana/run-nds','usr/libexec/banana/bluetooth','usr/libexec/banana/run-store',
+            'usr/libexec/banana/run-nds','usr/libexec/banana/bluetooth','usr/libexec/banana/run-slopetanium',
+            'usr/libexec/banana/slopetanium-portmaster-bootstrap',
             'usr/libexec/banana/run-dodakvarter','usr/libexec/banana/run-activity','usr/libexec/banana/run-port','usr/libexec/banana/one-panel',
             'usr/libexec/banana/retroarch-duolite','usr/libexec/banana/run-retroarch',
             'usr/libexec/banana/update','usr/libexec/banana/update-duolite-boot',
@@ -137,7 +138,7 @@ for rel in ['usr/libexec/banana/wifi','usr/libexec/banana/ssh','usr/libexec/bana
             'usr/bin/banana-perf','etc/init.d/rcK']:
     assert cat(rel) == (source/'system/rootfs'/rel).read_bytes(),rel
 assert cat('etc/banana/sleep.d/10-wifi') == (source/'system/rootfs/etc/banana/sleep.d/10-wifi').read_bytes()
-for rel in ['usr/bin/banana-ui','usr/bin/bananads','usr/sbin/bananad','usr/bin/rocknixds-store-ui','usr/bin/dodakvarter',
+for rel in ['usr/bin/banana-ui','usr/bin/bananads','usr/sbin/bananad','usr/bin/slopetanium-ui','usr/bin/dodakvarter',
             'usr/bin/qrtr-ns','usr/bin/tqftpserv','usr/bin/rmtfs','usr/sbin/wpa_supplicant','usr/sbin/dropbear',
             'usr/bin/bluetoothctl','usr/bin/bluealsa','usr/bin/bluealsa-cli',
             'usr/bin/dbus-daemon','usr/libexec/bluetooth/bluetoothd',
@@ -145,7 +146,8 @@ for rel in ['usr/bin/banana-ui','usr/bin/bananads','usr/sbin/bananad','usr/bin/r
     assert cat(rel)[:4] == b'\x7fELF',rel
 assert cat('etc/banana/stage').strip() == b'Alpha'
 assert b'Duo Lite' in cat('etc/banana/build')
-assert b'DK_TOP_ROTATION' in cat('usr/bin/rocknixds-store-ui')
+assert b'SLOP_TOP_ROTATION' in cat('usr/bin/slopetanium-ui')
+assert cat('usr/share/banana/rnds/icons/slopetanium.png').startswith(b'\x89PNG\r\n\x1a\n')
 assert b'--top-width' in cat('usr/bin/banana-ui')
 assert b'--top-rotation' in cat('usr/bin/banana-activity')
 assert b'SDL_BANANA_TOP_ROTATION' in cat('usr/lib/libSDL2-2.0.so.0')
@@ -164,11 +166,8 @@ assert cat('usr/lib/libsqlite3.so.0')[:4] == b'\x7fELF'
 assert cat('usr/libexec/ksmbd.tools')[:4] == b'\x7fELF'
 assert b'ksmbd.mountd -> /usr/libexec/ksmbd.tools' in command('unsquashfs', '-ll', squash, 'usr/sbin/ksmbd.mountd')
 assert b'/lib-dynload/_sqlite3.' in command('unsquashfs', '-ll', squash)
-assert cat('usr/share/banana/apps/store/rocknixds-store')
-import json
-catalog = json.loads(cat('usr/share/banana/apps/store/catalog-duolite.json'))
-for app in catalog['apps']:
-    assert ('duolite' in app.get('devices', [])) == (app['id'] in ('bshare', 'dodakvarter', 'portmaster'))
+assert b'SYSTEM_MANAGED' in cat('usr/share/slopetanium/app/core.py')
+assert b'Slopetanium.app' in command('unsquashfs', '-l', squash, 'usr/share/banana/apps/slopetanium')
 
 def config(name):
     result = {}
