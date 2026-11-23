@@ -1,5 +1,5 @@
 # Build the pinned upstream application; keep its source and assets upstream.
-SLOPETANIUM_VERSION = c3933298d40c9f4d1e54ccceda8730562fe92492
+SLOPETANIUM_VERSION = 9dadd926cbce1eae88dd80823b0da96bfc038e30
 SLOPETANIUM_SITE = $(call github,rzrbld,slopetanium,$(SLOPETANIUM_VERSION))
 SLOPETANIUM_LICENSE = MIT
 SLOPETANIUM_LICENSE_FILES = LICENSE ui/third_party/LICENSE.BananaLinux
