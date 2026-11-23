@@ -1,5 +1,10 @@
 # Changes
 
+## 0.1.0-alpha.44
+
+- Restore the original one-row home bubble, carousel and normal bottom face buttons.
+- Show and activate zoom controls only in editing; keep compact multi-row layouts.
+
 ## 0.1.0-alpha.43
 
 - Group emulators before apps by default and add an X-button home editor with persistent icon ordering.

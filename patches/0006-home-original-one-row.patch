@@ -1,0 +1,151 @@
+--- a/ui/rnds/RndsUI.cpp
++++ b/ui/rnds/RndsUI.cpp
+@@ -618,6 +618,7 @@
+ 		// a button's name and keeps its case in every language: lang.cpp)
+ 		std::u32string plateStart()
+ 		{
++			if(ui->mView==HOME && homeEdit) return heldHome.empty()?U"PICK":U"PLACE";
+ 			Translator tf = translator();
+ 			std::u32string t = tf ? tf(U"Start") : U"Start";
+ 			return t == U"Start" ? U"START" : t;
+@@ -1136,7 +1137,12 @@
+ 		int hitHome(float x,float y,int& slot)
+ 		{
+ 			float w=homeGrid().width;
+-			if(y>=390 && y<430) {
++			if(!homeEdit) {
++				auto g=geometry();
++				if(y>=422 && y<462 && x>=18 && x<18+g.leftW) return g.left.action;
++				if(y>=422 && y<462 && x>=622-g.rightW && x<622) return g.right.action;
++			}
++			if(homeEdit && y>=390 && y<430) {
+ 				if(x>=20 && x<76) return ACT_ZOOM_OUT;
+ 				if(x>=84 && x<140) return ACT_ZOOM_IN;
+ 				if(homeEdit && x>=w-310 && x<w-140) return ACT_HOME_PORTS;
+@@ -1148,6 +1154,31 @@
+ 			}
+ 			slot=homeGrid().hit(x,y);
+ 			return slot<0 ? ACT_NONE : ACT_SLOT;
++		}
++		void drawHomeControls()
++		{
++			if(!homeEdit) {
++				auto g=geometry();
++				drawFace(g.left,18,g.leftW,pressedAction && pressedSide==0);
++				drawFace(g.right,622-g.rightW,g.rightW,pressedAction && pressedSide==1);
++				float total=-10; for(float w:g.midW) total+=w+10;
++				float x=18+g.leftW+(604-g.leftW-g.rightW-total)/2;
++				for(size_t i=0;i<g.mids.size();++i) { drawFace(g.mids[i],x,g.midW[i],false); x+=g.midW[i]+10; }
++				return;
++			}
++			float w=homeGrid().width;
++			auto button=[&](const std::string& label,float x,float width) {
++				drawBox(kbdBox(),x,390,width,40);
++				drawFit(label,ts(true,18),x+5,400,22,width-10,P.kbdInk,false,true);
++			};
++			button("-",20,56); button("+",84,56);
++			drawFit(std::to_string(src->homeRows())+(src->homeRows()==1?" row":" rows"),ts(false,16),150,401,20,96,INK,false);
++			if(homeEdit) {
++				button(src->homePorts()?"Ports: home":"Ports: shelf",w-310,170);
++				button("X  Done",w-130,110);
++			}
++			std::string hint=homeEdit ? (heldHome.empty()?"A Pick up  B Done  L/R Zoom  Y Ports":"A Place  B Cancel  L/R Zoom") : "A Open  X Edit  START Settings  SELECT Search";
++			drawFit(hint,ts(false,16),18,448,20,w-36,MUTED,false,true);
+ 		}
+ 		void drawHome()
+ 		{
+@@ -1172,18 +1203,7 @@
+ 				Verbatim vb;
+ 				drawFit(si.name,ts(false,g.rows>=3 ? 12 : 16),x-(g.cellWidth-g.icon)/2+2,y+g.icon+3,18,g.cellWidth-4,selected?INK:MUTED,false,true);
+ 			}
+-			auto button=[&](const std::string& label,float x,float width) {
+-				drawBox(kbdBox(),x,390,width,40);
+-				drawFit(label,ts(true,18),x+5,400,22,width-10,P.kbdInk,false,true);
+-			};
+-			button("-",20,56); button("+",84,56);
+-			drawFit(std::to_string(g.rows)+(g.rows==1?" row":" rows"),ts(false,16),150,401,20,96,INK,false);
+-			if(homeEdit) {
+-				button(src->homePorts()?"Ports: home":"Ports: shelf",w-310,170);
+-				button("X  Done",w-130,110);
+-			}
+-			std::string hint=homeEdit ? (heldHome.empty()?"A Pick up  B Done  L/R Zoom  Y Ports":"A Place  B Cancel  L/R Zoom") : "A Open  X Edit  START Settings  SELECT Search";
+-			drawFit(hint,ts(false,16),18,448,20,w-36,MUTED,false,true);
++			drawHomeControls();
+ 			be->endScreen();
+ 		}
+ 
+@@ -1414,10 +1434,7 @@
+ 			if (v == HOME)
+ 			{
+ 				g.left = Face{ "Y", "Fav", sys(ui->mSys).fav ? 1 : 0, ACT_FAV };
+-				const auto& sy = sys(ui->mSys);
+-				if (sy.app) g.right = Face{ "X", "Start", 0, ACT_RESUME };	// an app has nothing to resume
+-				else if (!sy.hasResume) g.right = Face{ "", "No games", 2, ACT_NONE };	// (X would do nothing)
+-				else g.right = Face{ "X", sy.played > 0 ? "Resume" : "Start", 0, ACT_RESUME };	// (nothing played: the first game)
++				g.right = Face{ "X", "Edit", 0, ACT_HOME_EDIT };
+ 			}
+ 			else if (v == LIBRARY)
+ 			{
+@@ -2077,7 +2094,7 @@
+ 
+ 		void drawBottom()
+ 		{
+-			if (ui->mView == HOME) { drawHome(); return; }
++			if (ui->mView == HOME && src->homeRows()>1) { drawHome(); return; }
+ 			be->beginScreen(1);
+ 			if (!wallBottom.empty()) drawSprite(still("wall-bottom", wallBottom, true), 0, 0);
+ 			drawBox(screenBox(!wallBottom.empty()), 0, 0, 640, 480);
+@@ -2212,6 +2229,8 @@
+ 			}
+ 			be->popClip();
+ 
++			if(v==HOME && homeEdit) { drawHomeControls(); be->endScreen(); return; }
++
+ 			// rail
+ 			int at = v == LAUNCH ? 0 : center(), total = v == LAUNCH ? 1 : n;
+ 			float trackW = g.railW;
+@@ -2339,7 +2358,8 @@
+ 		// ---- touch hit tests (CSS px of the bottom screen) ----
+ 		int hit(float x, float y, int& slotIndex, int& side)
+ 		{
+-			if (ui->mView == HOME) { side=-1; slotIndex=-1; return hitHome(x,y,slotIndex); }
++			if (ui->mView == HOME && src->homeRows()>1) { side=-1; slotIndex=-1; return hitHome(x,y,slotIndex); }
++			if (ui->mView == HOME && homeEdit && y>=384) { side=-1; slotIndex=-1; return hitHome(x,y,slotIndex); }
+ 			Geo g = geometry();
+ 			View v = ui->mView;
+ 			slotIndex = -1; side = -1;
+@@ -2383,12 +2403,12 @@
+ 			case ACT_ZOOM_OUT: zoomHome(1); break;
+ 			case ACT_ZOOM_IN: zoomHome(-1); break;
+ 			case ACT_HOME_PORTS: toggleHomePorts(); break;
+-			case ACT_HOME_EDIT: finishHome(); break;
++			case ACT_HOME_EDIT: if(homeEdit) finishHome(); else { homeEdit=true; render(false); } break;
+ 			case ACT_HOME_PREV: homePage(-1); break;
+ 			case ACT_HOME_NEXT: homePage(1); break;
+ 			case ACT_PREV: if (!page(-1)) nudge(-1); break;		// (a game list: a page, as L)
+ 			case ACT_NEXT: if (!page(1)) nudge(1); break;
+-			case ACT_OPEN: open(); break;
++			case ACT_OPEN: if(ui->mView==HOME && homeEdit) placeHome(); else open(); break;
+ 			case ACT_BACK: back(); break;
+ 			case ACT_FAV: toggleFav(); break;
+ 			case ACT_RESUME: resume(); break;
+@@ -2481,8 +2501,8 @@
+ 			}
+ 			if(b==A && d->homeEdit) { d->placeHome(); return true; }
+ 			if(b==Y && d->homeEdit) { d->toggleHomePorts(); return true; }
+-			if(b==UP || b==DOWN) { d->homeVertical(b==UP?-1:1); return true; }
+-			if(b==L || b==R) { if(d->homeEdit) d->zoomHome(b==L?1:-1); else d->homePage(b==L?-1:1); return true; }
++			if(b==UP || b==DOWN) { if(d->src->homeRows()>1) d->homeVertical(b==UP?-1:1); return true; }
++			if(b==L || b==R) { if(d->homeEdit) d->zoomHome(b==L?1:-1); else if(d->src->homeRows()==1) d->nudge(b==L?-1:1); else d->homePage(b==L?-1:1); return true; }
+ 		}
+ 		switch (b)
+ 		{
+@@ -2535,7 +2555,7 @@
+ 		float dx = cx - d->downX, dy = cy - d->downY;
+ 		if (std::fabs(dx) > 56 && std::fabs(dx) > std::fabs(dy) * 1.2f)
+ 		{
+-			if(mView==HOME) d->homePage(dx<0?1:-1); else d->nudge(dx < 0 ? 1 : -1);
++			if(mView==HOME && d->src->homeRows()>1) d->homePage(dx<0?1:-1); else d->nudge(dx < 0 ? 1 : -1);
+ 			return true;
+ 		}
+ 		int slot, side;

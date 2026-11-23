@@ -68,6 +68,15 @@ int main(int argc,char**argv) {
  }
  ui.press(rnds::UI::R);assert(lib.homeRows()==3);ui.press(rnds::UI::L);assert(lib.homeRows()==4);
  ui.press(rnds::UI::X);assert(!ui.editingHome());ui.press(rnds::UI::DOWN);assert(ui.systemIndex()==rnds::HomeGrid(4,lib.systemCount(),0,640).columns);
+ // Zoom is edit-only; the normal footer's X face enters editing in every density.
+ for(int rows=1;rows<=4;++rows) {
+  lib.setHomeRows(rows);ui.setHome(0);ui.update(20000+rows*1000);ui.render();ui.finishWork();ui.render();
+  save(be,(out/("normal-rows-"+std::to_string(rows))).string());
+  ui.touch(1,48,410,true);ui.touch(1,48,410,false);
+  assert(lib.homeRows()==rows && !ui.editingHome());
+  ui.touch(1,590,442,true);ui.touch(1,590,442,false);assert(ui.editingHome());
+  ui.press(rnds::UI::B);assert(!ui.editingHome());
+ }
  // Removing/reinstalling an app preserves stable identity and unrelated positions.
  fs::remove(root/"tiles/Reader.sh");lib.scan();write(root/"tiles/Reader.sh","#!/bin/sh\n");lib.scan();assert(find(lib,"app:Reader.sh")==1);
  for(int rows=1;rows<=4;++rows)for(int n:{0,1,5,31,103})for(int at=0;at<std::max(1,n);++at) {

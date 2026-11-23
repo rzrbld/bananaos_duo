@@ -3,14 +3,14 @@
 The standard Dark/Light home launcher defaults to one row. Emulators and the
 Ports shelf precede apps; Favorites and Recently played follow them. A saved
 custom order takes precedence over that default grouping. The upper panel keeps
-the selected item's normal preview; the lower panel contains the icon grid.
+the selected item's normal preview; the lower panel keeps the original bubble/carousel for one row and uses a compact grid for two to four rows.
 
 - **A** opens the selected emulator/app. Tap an icon to select it, then tap it
   again to open it. D-pad moves selection; L/R or the top arrows change page.
 - **X** enters editing. A picks up the selected icon; move the cursor with the
   D-pad, then A places it. Touch can pick up and place too. B cancels a picked-up
   move. X, or B without an icon picked up, finishes editing.
-- **−** zooms out by adding a row; **+** zooms in by removing one. One to four
+- While editing, **−** zooms out by adding a row; **+** zooms in by removing one. One to four
   rows are supported. In editing, L is − and R is +.
 - **Y** in editing, or **Ports: shelf / Ports: home**, toggles installed ports on
   home. Finish/cancel a picked-up move before changing port visibility.
