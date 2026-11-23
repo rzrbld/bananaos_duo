@@ -3,7 +3,7 @@
 ## 0.1.0-alpha.40
 
 - Kept SDL ALSA playback interruptible so closing a game cannot wait forever in a blocked audio write.
-- Included Slopetanium v0.3.1-beta with correct routing of legacy PortMaster archives.
+- Seeds Slopetanium v0.3.2-beta with correct legacy-port routing, cached startup checks and faster menu composition; existing independent app updates are preserved.
 
 ## 0.1.0-alpha.39
 
