@@ -21,13 +21,16 @@ not public deployment configuration.
 
 ## Recent verified findings
 
-- Alpha46 candidate restores upper touchscreen initialization after the first
+- Alpha46 restores upper touchscreen initialization after the first
   display modeset and provides per-output compositor assignments. An initial
   live reprobe registered the existing Himax driver, and the user confirmed
   accurate top-panel touch in Greenlight. Native UI and SDL coordinate checks
   cover rotation, unequal panels and filtering a disabled lower output. The
-  full image and source checks passed locally; installation and reboot/sleep
-  verification are pending. A fresh SDL build exposed a short-context audio
+  full image and source checks passed locally. Complete Alpha46 was A/B-installed
+  in slot A; active kernel, DTB and complete immutable root hashes matched the
+  built image. Both touchscreens registered automatically after reboot, with
+  upper DSI-1 and lower DP-1 output assignments. Physical touch after that boot
+  and sleep/resume still need user checks. A fresh SDL build exposed a short-context audio
   patch failure; its hunks are consolidated against the pinned SDL tarball,
   preserving the existing nonblocking writes, refill polling and prefill policy.
 
