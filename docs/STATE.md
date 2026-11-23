@@ -30,8 +30,9 @@ not public deployment configuration.
   Alpha42 consumed 196,608 bytes of queued 48 kHz stereo S16 silence in one second
   without logged underruns, versus 71,680 on Alpha41. A controlled GBA DS test
   using the complete candidate library ran 59.3–60 FPS, advanced the PCM pointer
-  at 48 kHz and exited normally with temporary saves. Final listening confirmation
-  remains pending; do not equate silent transport tests with audible quality.
+  at 48 kHz and exited normally with temporary saves. The installed-firmware test
+  also completed normally, and the user confirmed that GBA DS audio sounded okay
+  on Alpha42. This confirmation is specific to the reported playback issue.
 
 - Slopetanium v0.3.2-beta caches successful startup checks for one hour across
   launches; only stale repositories are refreshed. Manual X / Check for updates

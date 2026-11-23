@@ -90,17 +90,16 @@ Its hardware pointer advanced from 144,000 to 192,960 over about one second;
 logged gameplay ran 59.3–60 FPS with a 0–39 ms queue, rather than a stationary
 hardware pointer and a saturated queue. One game-side underrun remained in a
 five-second interval; this is not a claim of universally glitch-free audio.
-Physical listening confirmation is still required for the final installed build.
+The candidate measurements below were followed by installed-build testing.
 
 
 The complete Alpha42 firmware was subsequently installed in slot A and its
 kernel, DTB and full immutable root matched the built components. The same
 SDL-only test using the installed library consumed 196,608 bytes in one second,
-returned success and logged no underruns. The launcher was restored. Final
-listening confirmation remains pending.
+returned success and logged no underruns. The launcher was restored.
 
 The final installed-firmware GBA DS run also completed normally after 1,204
 frames, with temporary save paths and automatic launcher restoration. Later
 five-second intervals ran at 60 FPS with no game-reported underruns; the initial
-interval reported one. This remains transport/game-log evidence pending the
-user's listening check.
+interval reported one. The user subsequently confirmed that audio sounded okay
+on installed Alpha42, completing the listening check for this GBA DS issue.
