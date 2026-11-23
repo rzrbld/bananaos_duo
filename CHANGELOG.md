@@ -1,5 +1,9 @@
 # Changes
 
+## 0.1.0-alpha.42
+
+- Poll SDL nonblocking ALSA playback at 1 ms instead of sleeping at least one complete hardware period, avoiding repeated refill underruns on the Duo Lite.
+
 ## 0.1.0-alpha.41
 
 - Reset Qualcomm PCM queue and DSP ring positions on stream preparation so audio can recover after underruns instead of remaining silently stalled.

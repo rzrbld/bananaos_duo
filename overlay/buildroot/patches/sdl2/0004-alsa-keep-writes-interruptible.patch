@@ -41,3 +41,18 @@ device; PlayDevice already recovers the same errors.
          } else if (rc < needed) {
              const Uint32 delay = ((needed - (SDL_max(rc, 0))) * 1000) / this->spec.freq;
              SDL_Delay(SDL_max(delay, 10));
+
+--- a/src/audio/alsa/SDL_alsa_audio.c
++++ b/src/audio/alsa/SDL_alsa_audio.c
+@@ -264,7 +264,9 @@
+             continue;
+         } else if (rc < needed) {
+-            const Uint32 delay = ((needed - (SDL_max(rc, 0))) * 1000) / this->spec.freq;
+-            SDL_Delay(SDL_max(delay, 10));
++            /* Hardware periods can be only 10 ms. Sleeping a full period
++               here repeatedly misses the refill deadline on a two-period
++               PCM. Poll briefly while retaining the shutdown check. */
++            SDL_Delay(1);
+         } else {
+             break; /* ready to go! */
+         }
