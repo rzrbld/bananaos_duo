@@ -29,8 +29,9 @@ not public deployment configuration.
   full image and source checks passed locally. Complete Alpha46 was A/B-installed
   in slot A; active kernel, DTB and complete immutable root hashes matched the
   built image. Both touchscreens registered automatically after reboot, with
-  upper DSI-1 and lower DP-1 output assignments. Physical touch after that boot
-  and sleep/resume still need user checks. A fresh SDL build exposed a short-context audio
+  upper DSI-1 and lower DP-1 output assignments. The user subsequently confirmed
+  top touch in the app and a real console stream. Sleep/resume still needs a
+  separate touch regression check. A fresh SDL build exposed a short-context audio
   patch failure; its hunks are consolidated against the pinned SDL tarball,
   preserving the existing nonblocking writes, refill polling and prefill policy.
 
