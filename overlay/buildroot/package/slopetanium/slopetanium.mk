@@ -1,5 +1,5 @@
 # Build the pinned upstream application; keep its source and assets upstream.
-SLOPETANIUM_VERSION = 9dadd926cbce1eae88dd80823b0da96bfc038e30
+SLOPETANIUM_VERSION = 4524e4e5f39565d9bc289a599c0ec56a6cc4571d
 SLOPETANIUM_SITE = $(call github,rzrbld,slopetanium,$(SLOPETANIUM_VERSION))
 SLOPETANIUM_LICENSE = MIT
 SLOPETANIUM_LICENSE_FILES = LICENSE ui/third_party/LICENSE.BananaLinux
@@ -15,7 +15,7 @@ define SLOPETANIUM_INSTALL_TARGET_CMDS
 	rm -rf $(TARGET_DIR)/usr/share/slopetanium
 	mkdir -p $(TARGET_DIR)/usr/share/banana/rnds/icons $(TARGET_DIR)/usr/share/slopetanium $(TARGET_DIR)/usr/share/banana/apps/slopetanium
 	$(HOST_DIR)/bin/python3 $(SLOPETANIUM_PKGDIR)/make-seed.py $(@D) $(TARGET_DIR)/usr/share/slopetanium/seed.zip
-	printf 'v0.3.0-beta\n' > $(TARGET_DIR)/usr/share/slopetanium/seed-version
+	printf 'v0.3.1-beta\n' > $(TARGET_DIR)/usr/share/slopetanium/seed-version
 	touch $(TARGET_DIR)/usr/share/banana/apps/slopetanium/Slopetanium.app
 	$(INSTALL) -m 0644 $(@D)/port/slopetanium/assets/icons/slopetanium-icon-96.png $(TARGET_DIR)/usr/share/banana/rnds/icons/slopetanium.png
 endef
