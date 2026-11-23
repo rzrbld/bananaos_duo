@@ -98,3 +98,9 @@ kernel, DTB and full immutable root matched the built components. The same
 SDL-only test using the installed library consumed 196,608 bytes in one second,
 returned success and logged no underruns. The launcher was restored. Final
 listening confirmation remains pending.
+
+The final installed-firmware GBA DS run also completed normally after 1,204
+frames, with temporary save paths and automatic launcher restoration. Later
+five-second intervals ran at 60 FPS with no game-reported underruns; the initial
+interval reported one. This remains transport/game-log evidence pending the
+user's listening check.
