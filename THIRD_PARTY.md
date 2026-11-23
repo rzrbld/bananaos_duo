@@ -5,6 +5,7 @@ This repository is a port layer over [JorreFog/BananaLinux](https://github.com/J
 | Component | Source and pin | License / notices |
 | --- | --- | --- |
 | BananaLinux launcher and system | `upstream/BananaLinux`, commit in `sources.json` | Upstream MIT license and `THIRD_PARTY.md` |
+| Slopetanium | `rzrbld/slopetanium`, pin in `sources.json` and package recipe; downloaded during build | MIT; BananaLinux compositor attribution retained in installed notices |
 | Buildroot | `upstream/buildroot`, commit in `sources.json` | GPL-2.0 and package-specific licenses |
 | Original game menu | JorreFog/BananaFront, commit and per-file hashes in `sources.json`; fetched during preparation | GPL-3.0; fetched `COPYING` is preserved and installed with provenance |
 | ROCKNIX kernel support | `overlay/buildroot/board/duolite/SOURCES` | Linux/kernel patches GPL-2.0 and original per-file notices |

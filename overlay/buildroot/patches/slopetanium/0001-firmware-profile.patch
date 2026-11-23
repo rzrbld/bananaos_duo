@@ -1,0 +1,101 @@
+From: BananaOS Duo Lite port
+Subject: [PATCH] Honor OS top-panel mounting and keep firmware app system-managed
+
+The source application remains pinned upstream. Only the device profile and
+firmware-owned update policy differ from the standalone PortMaster package.
+
+--- a/ui/src/main.cpp
++++ b/ui/src/main.cpp
+@@ -1205,6 +1205,7 @@
+ 	SDL_Renderer* ren = nullptr;
+ 	SDL_Texture* tex = nullptr;
+ 	int W = 0, H = 0;
++	int rotation = 0;
+ 	int screen = 0;			// which composed screen it shows
+ 	int shown = -1;			// the screen its texture holds now (another one: a full upload)
+ 	SDL_Rect dst{};
+@@ -1222,6 +1223,9 @@
+ 	if (!w.ren) w.ren = SDL_CreateRenderer(w.win, -1, SDL_RENDERER_SOFTWARE);
+ 	if (!w.ren) { logf("renderer: %s", SDL_GetError()); return false; }
+ 	SDL_GetRendererOutputSize(w.ren, &w.W, &w.H);
++	if (display == 0 && getenv("SLOP_TOP_ROTATION")) w.rotation = atoi(getenv("SLOP_TOP_ROTATION"));
++	if (w.rotation != 90 && w.rotation != 180 && w.rotation != 270) w.rotation = 0;
++	if (w.rotation == 90 || w.rotation == 270) std::swap(w.W, w.H);
+ 	w.tex = SDL_CreateTexture(w.ren, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, bw, bh);
+ 	if (!w.tex) { logf("texture: %s", SDL_GetError()); return false; }
+ 	float fit = std::min(w.W / (float)bw, w.H / (float)bh);
+@@ -1246,7 +1250,12 @@
+ 	SDL_UpdateTexture(w.tex, &r, px, bw * 4);
+ 	SDL_SetRenderDrawColor(w.ren, (theme::screenBg >> 16) & 255, (theme::screenBg >> 8) & 255, theme::screenBg & 255, 255);
+ 	SDL_RenderClear(w.ren);
+-	SDL_RenderCopy(w.ren, w.tex, nullptr, &w.dst);
++	if (w.rotation) {
++		// dst is in logical upright coordinates; rotate around the physical output's centre.
++		SDL_Rect dst = w.dst;
++		if (w.rotation == 90 || w.rotation == 270) { dst.x=(w.H-dst.w)/2; dst.y=(w.W-dst.h)/2; }
++		SDL_RenderCopyEx(w.ren, w.tex, nullptr, &dst, w.rotation, nullptr, SDL_FLIP_NONE);
++	} else SDL_RenderCopy(w.ren, w.tex, nullptr, &w.dst);
+ 	SDL_RenderPresent(w.ren);
+ 	return true;
+ }
+@@ -1338,6 +1347,8 @@
+ 	// its own physical output without stretching either screen's content.
+ 	if (!headless) {
+ 		SDL_GetDisplayBounds(0,&topBounds);
++		int rotation = getenv("SLOP_TOP_ROTATION") ? atoi(getenv("SLOP_TOP_ROTATION")) : 0;
++		if (rotation == 90 || rotation == 270) std::swap(topBounds.w, topBounds.h);
+ 		if (host.dual && ndisp>=2) SDL_GetDisplayBounds(1,&bottomBounds);
+ 		else bottomBounds=topBounds;
+ 	}
+@@ -1596,8 +1607,12 @@
+ 				Window& w = wins[host.dual ? scr : 0];
+ 				if (!host.dual) scr = host.shownScreen();
+ 				// the finger in the composed screen's device px (the touch spans the display; the screen is centred in it)
+-				float px = (ev.tfinger.x*w.W-w.dst.x)*host.be->width(scr)/w.dst.w;
+-				float py = (ev.tfinger.y*w.H-w.dst.y)*host.be->height()/w.dst.h;
++				float tx=ev.tfinger.x, ty=ev.tfinger.y;
++				if (w.rotation == 90) { tx=ev.tfinger.y; ty=1-ev.tfinger.x; }
++				else if (w.rotation == 270) { tx=1-ev.tfinger.y; ty=ev.tfinger.x; }
++				else if (w.rotation == 180) { tx=1-tx; ty=1-ty; }
++				float px = (tx*w.W-w.dst.x)*host.be->width(scr)/w.dst.w;
++				float py = (ty*w.H-w.dst.y)*host.be->height()/w.dst.h;
+ 				float cx = px / host.s, cy = py / host.s;
+ 				bool overlayOwns = host.mode != Host::SHELF && (host.dual ? (host.mode == Host::MENU ? scr == 1 : true) : true);
+ 				if (overlayOwns)
+--- a/port/slopetanium/app/core.py
++++ b/port/slopetanium/app/core.py
+@@ -33,6 +33,7 @@
+ import community as community_mod
+ import apps as apps_mod
+ 
++SYSTEM_MANAGED = os.environ.get("SLOP_SYSTEM_MANAGED") == "1"
+ USER_AGENT = "slopetanium/0.1"
+ API = "https://api.github.com"
+ REPO_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+@@ -555,6 +556,8 @@
+ 
+     def add_repo(self, data):
+         repo = parse_repo(data.get("repo"))
++        if SYSTEM_MANAGED and repo.lower() == "rzrbld/slopetanium":
++            raise ValueError("Slopetanium is built into BananaOS; update it in Settings > System > Updates")
+         with self.lock:
+             for r in self.state["repos"]:
+                 if r["repo"].lower() == repo.lower() and \
+@@ -723,6 +726,8 @@
+             watched = set(r["repo"].lower() for r in self.state["repos"])
+             for c in CATALOGUE:
+                 key = c["repo"].lower()
++                if SYSTEM_MANAGED and key == "rzrbld/slopetanium":
++                    continue
+                 if key in offered:
+                     continue
+                 offered.append(key)
+@@ -1162,6 +1167,8 @@
+ 
+     def _install(self, job, repo_id, tag):
+         r = self.get_repo(repo_id)
++        if SYSTEM_MANAGED and r["repo"].lower() == "rzrbld/slopetanium":
++            raise RuntimeError("Slopetanium is built into BananaOS; update the firmware instead")
+         rel = self._find_release(r, tag)
+         cdir = os.path.join(self._cache_dir(r), tag_safe(tag))
+         zip_path = None

@@ -1,0 +1,127 @@
+--- a/ui/src/library.h
++++ b/ui/src/library.h
+@@ -19,6 +19,8 @@
+ 		std::vector<std::string> exts;	// lower case, no dot
+ 		bool always = false;			// on the shelf with no games (the DS: a fresh card shows where games go)
+ 		bool flat = false;				// games only in the folder itself (ports: their own folders hold scripts too)
++		bool appTile = false;
++		std::string icon;
+ 		std::string changed;			// a command run when its folder changes (Game & Watch: names and covers)
+ 	};
+ 
+--- a/ui/src/library.cpp
++++ b/ui/src/library.cpp
+@@ -704,7 +704,7 @@
+ 					if (g.box.empty()) g.box = media.find(dir, "box", stem);
+ 					if (g.cart.empty()) g.cart = media.find(dir, "cart", stem);
+ 					if (g.label.empty()) g.label = media.find(dir, "label", stem);
+-					std::string key = def.id + "/" + g.rel;
++					std::string key = (def.id == "storeapps" ? "app:" + g.rel : def.id) + "/" + g.rel;
+ 					if (it != gl.end()) g.sort = it->second.sortname;
+ 					g.scraped = g.title;
+ 					auto tt = titles.find(key);
+@@ -733,7 +733,21 @@
+ 			// with it left out, deleting the last port took PortMaster off the row too (reachable again only through
+ 			// Shown systems > Ports > Always; QA 2026-10-26). Shown systems > Ports > Hidden takes it off
+ 			bool launchable = !sh.games.empty();
+-			if (launchable || def.always || mode == "show") shelves.push_back(sh);
++			if (def.id == "storeapps")
++			{
++				// Each installed app is a home tile, never a port or a nested system.
++				for (auto& g : sh.games)
++				{
++					Shelf app = sh;
++					app.def.id = "app:" + g.rel;
++					app.def.name = g.title;
++					app.def.appTile = true;
++					app.def.icon = !g.box.empty() ? g.box : assets + "/icons/apps.png";
++					app.games = {g};
++					if (!hidden.count(app.def.id) && modes[app.def.id] != "hide") shelves.push_back(app);
++				}
++			}
++			else if (launchable || def.always || mode == "show") shelves.push_back(sh);
+ 		}
+ 		arrange();
+ 		if (lib >= (int)shelves.size()) lib = 0;
+@@ -808,6 +822,9 @@
+ 		for (size_t k = 0; k < fav.games.size(); k++)
+ 			for (int s = 0; s < (int)shelves.size(); s++)
+ 			{
++				if (shelves[s].def.appTile && (shelves[s].games.empty() ||
++					shelves[s].games[0].path != fav.games[k].path)) continue;
++				// App tiles share a shortcut folder; match their actual launcher.
+ 				bool in = false;
+ 				for (auto& root : roots())
+ 				{
+@@ -939,8 +953,8 @@
+ 			auto mk = looks.find("@" + lower(r.maker));
+ 			if (mk != looks.end()) r.accent = mk->second.accent;
+ 		}
+-		r.icon = themedIcon(s.def.id, look.icon);	// a user theme's own icon for the system (theme.h)
+-		r.app = look.app;
++		r.icon = s.def.appTile ? s.def.icon : themedIcon(s.def.id, look.icon);	// a user theme's own icon for the system (theme.h)
++		r.app = s.def.appTile || look.app;
+ 		r.games = (int)s.games.size();
+ 		long secs = 0;
+ 		for (auto& g : s.games) { if (g.plays > 0) r.played++; secs += g.seconds; }
+--- a/ui/src/main.cpp
++++ b/ui/src/main.cpp
+@@ -395,6 +395,15 @@
+ 			ui.setHome(0);
+ 			return;
+ 		}
++	}
++	if (sys >= 0 && sys < lib.systemCount() && lib.shelf(sys).def.id == "slopetanium")
++	{
++		lib.scan();
++		ui.dataChanged();
++		for (int i = 0; i < lib.systemCount(); i++)
++			if (lib.shelf(i).def.id == "slopetanium") { ui.setHome(i); return; }
++		ui.setHome(0);
++		return;
+ 	}
+ 	if (sys >= 0 && sys < lib.systemCount() && lib.system(sys).app) ui.setHome(sys);
+ 	else ui.setLibrary(sys, game);
+--- a/system/rootfs/etc/banana/systems.conf
++++ b/system/rootfs/etc/banana/systems.conf
+@@ -130,12 +130,12 @@
+ # (files to and from phones and computers with LocalSend: always on the home row, unless the Store took it off)
+ always = yes
+ 
+-[rocknixdsstore]
+-name = Store
+-maker = ROCKNIXDS
+-folder = /usr/share/banana/apps/store
++[slopetanium]
++name = Slopetanium
++maker = Slopetanium
++folder = /usr/share/banana/apps/slopetanium
+ ext = app
+-run = /usr/libexec/banana/run-store %ROM%
++run = /usr/libexec/banana/run-slopetanium %ROM%
+ perf = balanced
+ 
+ # Activity (store/apps/activity, #213): play time from the menu's playstats.tsv, its own session history in
+--- a/ui/assets/rnds/systems.cfg
++++ b/ui/assets/rnds/systems.cfg
+@@ -33,7 +33,7 @@
+ # as a system of one entry, so each has a tile on the shelf), and the Apps shelf of what the Store installed
+ dodakvarter                                             dodakvarter.png #b8323a   ROCKNIXDS [app]
+ rocknixdsbank                                           poketool.png    #3d6fb8   ROCKNIXDS [app]
+-rocknixdsstore                                          store.png       #2eae62   ROCKNIXDS [app]
++slopetanium                                            slopetanium.png #2eae62   Slopetanium [app]
+ storeapps                                               apps.png        #2eae62   Store
+ 
+ # the rest, by what they are
+--- a/ui/Makefile
++++ b/ui/Makefile
+@@ -248,3 +248,9 @@
+ # the DS Pokémon companion's advice (damage, catching, team score, guide progress; tests/run.sh runs it)
+ tests/nds-logic-test: tests/nds-logic-test.cpp src/nds/logic.cpp src/nds/session.cpp $(NDS_RAM_SRC) $(wildcard src/nds/*.h)
+ 	$(CXX) $(CXXFLAGS) -Isrc -o $@ tests/nds-logic-test.cpp src/nds/logic.cpp src/nds/session.cpp $(NDS_RAM_SRC)
++
++# Actual library scan coverage for home apps and the separate Ports shelf.
++tests/app-tiles-test: tests/app-tiles-test.cpp src/library.cpp src/library.h rnds/RndsRaster.cpp
++	$(CXX) $(CXXFLAGS) -std=c++17 -ffunction-sections -fdata-sections -Wl,--gc-sections -Isrc \
++		$(shell $(PKG_CONFIG) --cflags freetype2) -o $@ tests/app-tiles-test.cpp src/library.cpp rnds/RndsRaster.cpp \
++		$(shell $(PKG_CONFIG) --libs freetype2) -lpthread

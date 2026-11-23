@@ -56,5 +56,9 @@
         "sha256": "166b6e7637bb45cb9352e4813005f83dd48f03ef634d3e9e94a30aa5a0300fab"
       }
     ]
+  },
+  "Slopetanium": {
+    "repository": "https://github.com/rzrbld/slopetanium",
+    "commit": "8fb57d911ac838677c0a665d8ff2e5ec90a7919f"
   }
 }

@@ -1,0 +1,57 @@
+#!/usr/bin/python3
+"""First-run installation of the untouched upstream PortMaster archive."""
+import hashlib
+import os
+from pathlib import Path
+import shutil
+import stat
+import tempfile
+import urllib.request
+import zipfile
+
+URL = 'https://github.com/PortsMaster/PortMaster-GUI/releases/download/2026.10.03-1041/PortMaster.zip'
+SHA256 = '6e4fa938c39efdb9237aa9973b3ce3f318242ada171f26cd72511b09e393fdf2'
+
+def install(archive, ports):
+    ports = Path(ports)
+    if (ports / 'PortMaster').exists():
+        raise RuntimeError('Existing PortMaster directory preserved; reinstall it using the upstream installer')
+    with tempfile.TemporaryDirectory(prefix='.portmaster-', dir=ports) as tmp:
+        stage = Path(tmp)
+        with zipfile.ZipFile(archive) as z:
+            for item in z.infolist():
+                path = Path(item.filename)
+                if path.is_absolute() or '..' in path.parts or not path.parts or path.parts[0] != 'PortMaster':
+                    raise ValueError('Unexpected path in PortMaster archive')
+                mode = item.external_attr >> 16
+                if stat.S_ISLNK(mode):
+                    raise ValueError('Unexpected link in PortMaster archive')
+                z.extract(item, stage)
+                if not item.is_dir():
+                    (stage / path).chmod(0o755 if mode & 0o111 or path.suffix in ('.sh', '.txt') else 0o644)
+        source = stage / 'PortMaster'
+        if not (source / 'harbourmaster').is_file() or not (source / 'PortMaster.sh').is_file():
+            raise ValueError('Incomplete PortMaster archive')
+        shutil.copyfile(source / 'PortMaster.sh', stage / 'PortMaster.sh')
+        (stage / 'PortMaster.sh').chmod(0o755)
+        os.rename(source, ports / 'PortMaster')
+        # Never overwrite a user's existing launch shortcut.
+        if not (ports / 'PortMaster.sh').exists():
+            os.rename(stage / 'PortMaster.sh', ports / 'PortMaster.sh')
+
+if __name__ == '__main__':
+    ports = Path('/data/roms/ports')
+    ports.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix='.pm-download-', dir=ports) as tmp:
+        archive = Path(tmp) / 'PortMaster.zip'
+        h = hashlib.sha256()
+        with urllib.request.urlopen(URL, timeout=30) as response, archive.open('wb') as out:
+            while True:
+                block = response.read(1 << 20)
+                if not block:
+                    break
+                h.update(block)
+                out.write(block)
+        if h.hexdigest() != SHA256:
+            raise ValueError('PortMaster archive checksum mismatch')
+        install(archive, ports)

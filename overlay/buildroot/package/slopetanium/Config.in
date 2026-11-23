@@ -1,0 +1,12 @@
+config BR2_PACKAGE_SLOPETANIUM
+	bool "Slopetanium app and port manager"
+	select BR2_PACKAGE_SDL2
+	select BR2_PACKAGE_FREETYPE
+	select BR2_PACKAGE_PYTHON3
+	select BR2_PACKAGE_PYTHON3_SSL
+	select BR2_PACKAGE_PYTHON3_ZLIB
+	select BR2_PACKAGE_PYTHON3_PYEXPAT
+	select BR2_PACKAGE_CA_CERTIFICATES
+	help
+	  Native dual-panel manager. Apps appear on the BananaOS home menu;
+	  PortMaster packages use its original installer and Ports directory.

@@ -15,7 +15,7 @@ diff --git a/buildroot/Config.in b/buildroot/Config.in
 index e68e6f8a..3a14d48d 100644
 --- a/buildroot/Config.in
 +++ b/buildroot/Config.in
-@@ -1,4 +1,13 @@
+@@ -1,4 +1,14 @@
  menu "Banana"
 +config BR2_BANANA_DUOLITE
 +	bool "Retroid Pocket Duo Lite board"
@@ -26,6 +26,7 @@ index e68e6f8a..3a14d48d 100644
 +source "$BR2_EXTERNAL_BANANA_PATH/package/qcom-tqftpserv/Config.in"
 +source "$BR2_EXTERNAL_BANANA_PATH/package/qcom-rmtfs/Config.in"
 +source "$BR2_EXTERNAL_BANANA_PATH/package/mesa3d-adreno/Config.in"
++source "$BR2_EXTERNAL_BANANA_PATH/package/slopetanium/Config.in"
  source "$BR2_EXTERNAL_BANANA_PATH/package/banana-ui/Config.in"
  source "$BR2_EXTERNAL_BANANA_PATH/package/bananad/Config.in"
  source "$BR2_EXTERNAL_BANANA_PATH/package/superdrastic/Config.in"

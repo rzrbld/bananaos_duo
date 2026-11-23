@@ -6,6 +6,9 @@ import sys
 
 root = Path(sys.argv[1]).resolve()
 required = [
+    'usr/bin/slopetanium-ui', 'usr/libexec/banana/run-slopetanium',
+    'usr/libexec/banana/slopetanium-portmaster-bootstrap',
+    'usr/share/slopetanium/app/slopetanium.py',
     'usr/bin/qrtr-ns', 'usr/bin/tqftpserv', 'usr/bin/rmtfs',
     'usr/sbin/wpa_supplicant', 'usr/sbin/wpa_cli', 'usr/sbin/dropbear',
     'usr/bin/dropbearkey', 'usr/share/udhcpc/default.script',

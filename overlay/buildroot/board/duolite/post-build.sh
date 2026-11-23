@@ -14,21 +14,9 @@ echo duolite > "$T/etc/banana/board"
 echo Alpha > "$T/etc/banana/stage"
 echo "Duo Lite $(cat "$HERE/BUILD")" > "$T/etc/banana/build"
 cp "$HERE/RELEASE" "$T/etc/banana/release"
-# Keep unported Store apps visible as unsupported; do not impersonate an RG DS.
-if [ -f "$T/usr/share/banana/apps/store/catalog.json" ]; then
-    python3 - "$T/usr/share/banana/apps/store" <<'PY'
-import json, pathlib, sys
-p = pathlib.Path(sys.argv[1])
-c = json.loads((p / 'catalog.json').read_text())
-for app in c['apps']:
-    if app['id'] in ('bshare', 'dodakvarter', 'portmaster'):
-        app.setdefault('devices', []).append('duolite')
-(p / 'catalog-duolite.json').write_text(json.dumps(c, indent=2) + '\n')
-PY
-fi
-cp "$HERE/../../../tools/duolite/duolite-nearest.frag" "$T/usr/share/banana/duolite/"
-cp "$HERE/retroarch.cfg" "$T/usr/share/banana/duolite/retroarch.cfg"
-cat "$HERE/../../../system/rootfs/etc/banana/systems.conf" "$HERE/systems-extra.conf" > "$T/etc/banana/systems.conf"
+# Retire the old Store; preserve all user apps and PortMaster on /data.
+rm -rf "$T/usr/share/banana/apps/store"
+rm -f "$T/usr/bin/rocknixds-store-ui" "$T/usr/libexec/banana/run-store"
 mkdir -p "$T/usr/share/libretro/autoconfig/sdl2"
 cp "$HERE/retroid-sdl2.cfg" "$T/usr/share/libretro/autoconfig/sdl2/retroid-duolite.cfg"
 if [ -f "$T/usr/bin/retroarch" ]; then

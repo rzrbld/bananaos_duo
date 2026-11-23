@@ -101,6 +101,11 @@ assert b'portmaster-duolite-ui' not in command('unsquashfs', '-l', squash)
 def cat(name):
     return command('unsquashfs','-cat',squash,name)
 assert cat('etc/banana/board').strip() == b'duolite'
+assert cat('usr/bin/slopetanium-ui')[:4] == b'\x7fELF'
+assert b'[slopetanium]' in cat('etc/banana/systems.conf')
+assert b'[rocknixdsstore]' not in cat('etc/banana/systems.conf')
+assert b'SLOP_SYSTEM_MANAGED=1' in cat('usr/libexec/banana/run-slopetanium')
+assert b'rocknixds-store-ui' not in command('unsquashfs', '-l', squash)
 assert cat('etc/banana/release') == (source/'buildroot/board/duolite/RELEASE').read_bytes()
 assert b'Microphone test' in cat('usr/bin/banana-ui')
 assert b'Game vibration for emulators and compatible ports.' in cat('usr/bin/banana-ui')

@@ -1,0 +1,37 @@
+#!/bin/bash
+# Firmware application: immutable code, writable settings/cache, original PortMaster installer.
+set -e
+export HOME=/data/home XDG_DATA_HOME=/data/home/.local/share XDG_CONFIG_HOME=/data/home/.config XDG_RUNTIME_DIR=/run
+S=/data/slopetanium
+P=/data/roms/ports
+mkdir -p "$S/conf" "$HOME" "$P" /data/store/apps /data/store/tiles
+# Directory links separate the upstream application's data root from firmware files.
+for entry in app web assets; do ln -sfn "/usr/share/slopetanium/$entry" "$S/$entry"; done
+exec >>"$S/log.txt" 2>&1
+export SLOP_SYSTEM_MANAGED=1 SLOP_APPS_DIR=/data/store/apps SLOP_APP_SHORTCUTS_DIR=/data/store/tiles
+export controlfolder="$P/PortMaster"
+# A fresh card gets the original, checksum-pinned upstream package. Existing
+# installations and all PortMaster self-updates are left intact.
+if [ ! -f "$controlfolder/harbourmaster" ]; then
+    /usr/libexec/banana/slopetanium-portmaster-bootstrap || echo 'PortMaster unavailable: native apps remain usable; reopen with Wi-Fi to retry.'
+fi
+if [ -f "$controlfolder/control.txt" ]; then
+    set +e
+    source "$controlfolder/control.txt"
+    get_controls
+    set -e
+fi
+export SDL_GAMECONTROLLERCONFIG_FILE=/usr/share/banana/portmaster/gamecontrollerdb-duolite.txt
+export SDL_GAMECONTROLLERCONFIG="$(cat "$SDL_GAMECONTROLLERCONFIG_FILE")"
+export SDL_VIDEODRIVER=kmsdrm SDL_KMSDRM_FIRST=${BANANA_TOP:-DSI-1}
+export SLOP_TOP_ROTATION=${BANANA_TOP_ROTATION:-270} SLOP_TOUCH_BOTTOM=${BANANA_TOUCH:-4c80000.i2c}
+unset SDL_BANANA_PANELS SDL_BANANA_READBACK EGL_PLATFORM
+export PYSDL2_DLL_PATH=/usr/lib
+export SLOP_LOCAL_TOKEN="$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
+rm -f "$S/conf/core.port"
+/usr/bin/python3 "$S/app/slopetanium.py" --serve --root "$S" --ports-dir "$P" --controlfolder "$controlfolder" &
+CORE=$!
+cleanup() { kill -TERM "$CORE" 2>/dev/null || :; wait "$CORE" 2>/dev/null || :; }
+trap cleanup EXIT
+trap 'exit 143' TERM INT HUP
+/usr/bin/slopetanium-ui --assets "$S/assets" --conf "$S/conf" --screens 2

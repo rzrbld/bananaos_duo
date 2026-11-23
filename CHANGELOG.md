@@ -1,5 +1,13 @@
 # Changes
 
+## 0.1.0-alpha.37
+
+- Replaced the old Store with pinned, firmware-built Slopetanium on the home menu.
+- Kept PortMaster package installation in its standard Ports folder.
+- Added individual home tiles for installed native apps, refreshed immediately after Slopetanium exits.
+- Separated immutable manager code from persistent settings/cache and upstream app payloads.
+- Added the Duo Lite top-panel rotation profile and first-run checksum-verified vanilla PortMaster bootstrap.
+
 ## 0.1.0-alpha.27
 
 - Added native speaker/headphone routing, jack switching and physical volume control for the integrated Duo Lite audio card.
