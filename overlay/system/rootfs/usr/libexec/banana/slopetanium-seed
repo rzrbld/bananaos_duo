@@ -1,0 +1,17 @@
+#!/usr/bin/python3
+"""Install the firmware seed once; preserve independently updated app payloads."""
+from pathlib import Path
+import sys
+
+SEED='/usr/share/slopetanium/seed.zip'
+sys.path.insert(0,SEED+'/slopetanium/app')
+from apps import Apps
+manager=Apps('/data/slopetanium/packages','/data/slopetanium/.entries')
+info=manager.info('rzrbld/slopetanium')
+if info is None:
+    version=Path('/usr/share/slopetanium/seed-version').read_text().strip()
+    info=manager.install('rzrbld/slopetanium',version,SEED)
+root=Path(info['_dir'])
+if not (root/'slopetanium/app/slopetanium.py').is_file() or not (root/'slopetanium/slopetanium-ui.aarch64').is_file():
+    raise RuntimeError('Writable Slopetanium installation is incomplete; repair it without removing its settings')
+print(root)

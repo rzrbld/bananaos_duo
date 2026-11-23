@@ -101,10 +101,16 @@ assert b'portmaster-duolite-ui' not in command('unsquashfs', '-l', squash)
 def cat(name):
     return command('unsquashfs','-cat',squash,name)
 assert cat('etc/banana/board').strip() == b'duolite'
-assert cat('usr/bin/slopetanium-ui')[:4] == b'\x7fELF'
+import io, zipfile
+with zipfile.ZipFile(io.BytesIO(cat('usr/share/slopetanium/seed.zip'))) as seed:
+    assert seed.read('slopetanium/slopetanium-ui.aarch64')[:4] == b'\x7fELF'
+    assert b'SLOP_TOP_ROTATION' in seed.read('slopetanium/slopetanium-ui.aarch64')
+    assert b'SLOP_SELF_APPS_DIR' in seed.read('slopetanium/app/core.py')
+    assert json.loads(seed.read('slopetanium/app/native-app.json'))['schema'] == 1
 assert b'[slopetanium]' in cat('etc/banana/systems.conf')
 assert b'[rocknixdsstore]' not in cat('etc/banana/systems.conf')
-assert b'SLOP_SYSTEM_MANAGED=1' in cat('usr/libexec/banana/run-slopetanium')
+assert b'SLOP_SELF_APPS_DIR' in cat('usr/libexec/banana/run-slopetanium')
+assert b'usr/bin/slopetanium-ui' not in command('unsquashfs', '-l', squash)
 assert b'rocknixds-store-ui' not in command('unsquashfs', '-l', squash)
 assert cat('etc/banana/release') == (source/'buildroot/board/duolite/RELEASE').read_bytes()
 assert b'Microphone test' in cat('usr/bin/banana-ui')
@@ -127,7 +133,7 @@ for rel in ['etc/init.d/rcS','etc/inittab', 'usr/libexec/banana/duolite-service'
     assert cat(rel) == (source/'buildroot/board/duolite/rootfs'/rel).read_bytes(), rel
 for rel in ['usr/libexec/banana/wifi','usr/libexec/banana/ssh','usr/libexec/banana/run-bananads',
             'usr/libexec/banana/run-nds','usr/libexec/banana/bluetooth','usr/libexec/banana/run-slopetanium',
-            'usr/libexec/banana/slopetanium-portmaster-bootstrap',
+            'usr/libexec/banana/slopetanium-portmaster-bootstrap','usr/libexec/banana/slopetanium-seed',
             'usr/libexec/banana/run-dodakvarter','usr/libexec/banana/run-activity','usr/libexec/banana/run-port','usr/libexec/banana/one-panel',
             'usr/libexec/banana/retroarch-duolite','usr/libexec/banana/run-retroarch',
             'usr/libexec/banana/update','usr/libexec/banana/update-duolite-boot',
@@ -138,7 +144,7 @@ for rel in ['usr/libexec/banana/wifi','usr/libexec/banana/ssh','usr/libexec/bana
             'usr/bin/banana-perf','etc/init.d/rcK']:
     assert cat(rel) == (source/'system/rootfs'/rel).read_bytes(),rel
 assert cat('etc/banana/sleep.d/10-wifi') == (source/'system/rootfs/etc/banana/sleep.d/10-wifi').read_bytes()
-for rel in ['usr/bin/banana-ui','usr/bin/bananads','usr/sbin/bananad','usr/bin/slopetanium-ui','usr/bin/dodakvarter',
+for rel in ['usr/bin/banana-ui','usr/bin/bananads','usr/sbin/bananad','usr/bin/dodakvarter',
             'usr/bin/qrtr-ns','usr/bin/tqftpserv','usr/bin/rmtfs','usr/sbin/wpa_supplicant','usr/sbin/dropbear',
             'usr/bin/bluetoothctl','usr/bin/bluealsa','usr/bin/bluealsa-cli',
             'usr/bin/dbus-daemon','usr/libexec/bluetooth/bluetoothd',
@@ -146,7 +152,6 @@ for rel in ['usr/bin/banana-ui','usr/bin/bananads','usr/sbin/bananad','usr/bin/s
     assert cat(rel)[:4] == b'\x7fELF',rel
 assert cat('etc/banana/stage').strip() == b'Alpha'
 assert b'Duo Lite' in cat('etc/banana/build')
-assert b'SLOP_TOP_ROTATION' in cat('usr/bin/slopetanium-ui')
 assert cat('usr/share/banana/rnds/icons/slopetanium.png').startswith(b'\x89PNG\r\n\x1a\n')
 assert b'--top-width' in cat('usr/bin/banana-ui')
 assert b'--top-rotation' in cat('usr/bin/banana-activity')
@@ -166,7 +171,6 @@ assert cat('usr/lib/libsqlite3.so.0')[:4] == b'\x7fELF'
 assert cat('usr/libexec/ksmbd.tools')[:4] == b'\x7fELF'
 assert b'ksmbd.mountd -> /usr/libexec/ksmbd.tools' in command('unsquashfs', '-ll', squash, 'usr/sbin/ksmbd.mountd')
 assert b'/lib-dynload/_sqlite3.' in command('unsquashfs', '-ll', squash)
-assert b'SYSTEM_MANAGED' in cat('usr/share/slopetanium/app/core.py')
 assert b'Slopetanium.app' in command('unsquashfs', '-l', squash, 'usr/share/banana/apps/slopetanium')
 
 def config(name):

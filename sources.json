@@ -59,6 +59,7 @@
   },
   "Slopetanium": {
     "repository": "https://github.com/rzrbld/slopetanium",
-    "commit": "8fb57d911ac838677c0a665d8ff2e5ec90a7919f"
+    "commit": "c3933298d40c9f4d1e54ccceda8730562fe92492",
+    "seed_tag": "v0.3.0-beta"
   }
 }

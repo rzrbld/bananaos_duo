@@ -16,7 +16,7 @@ echo "Duo Lite $(cat "$HERE/BUILD")" > "$T/etc/banana/build"
 cp "$HERE/RELEASE" "$T/etc/banana/release"
 # Retire the old Store; preserve all user apps and PortMaster on /data.
 rm -rf "$T/usr/share/banana/apps/store"
-rm -f "$T/usr/bin/rocknixds-store-ui" "$T/usr/libexec/banana/run-store"
+rm -f "$T/usr/bin/rocknixds-store-ui" "$T/usr/libexec/banana/run-store" "$T/usr/bin/slopetanium-ui"
 cp "$HERE/../../../tools/duolite/duolite-nearest.frag" "$T/usr/share/banana/duolite/"
 cp "$HERE/retroarch.cfg" "$T/usr/share/banana/duolite/retroarch.cfg"
 cat "$HERE/../../../system/rootfs/etc/banana/systems.conf" "$HERE/systems-extra.conf" > "$T/etc/banana/systems.conf"

@@ -2,7 +2,8 @@
 
 ## 0.1.0-alpha.39
 
-- Fixed Slopetanium startup on exFAT cards by placing code/data links in RAM.
+- Fixed Slopetanium startup on exFAT cards without data-partition symlinks.
+- Moved Slopetanium itself to writable storage with atomic independent updates and rollback.
 - Kept persistent settings, downloads and backups on the data card.
 
 ## 0.1.0-alpha.38
