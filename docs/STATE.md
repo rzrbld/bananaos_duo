@@ -9,8 +9,8 @@ Stable project rules live in [AGENTS.md](../AGENTS.md), not in this snapshot.
 | Item | Verified state |
 | --- | --- |
 | Public firmware release | `v0.1.0-alpha.35`; later local development versions are not public OTA releases yet |
-| Current local firmware | `0.1.0-alpha.43`, complete local image built and checked; editable home grid over the verified Alpha42 audio fixes |
-| Development handheld | Alpha43 running in slot B; kernel, DTB and complete immutable root matched the checked local image; gamepad registered and new home grid captured from the real scanout |
+| Current local firmware | `0.1.0-alpha.44`, complete local image built and checked; original one-row home restored over the editable grid and verified Alpha42 audio fixes |
+| Development handheld | Alpha44 running in slot A; kernel, DTB and complete immutable root matched the checked local image; gamepad registered and restored one-row bubble/footer captured from the real scanout |
 | Slopetanium | Public `v0.3.2-beta`; writable app independently updated from CI and all 34 packaged files verified; next nightly seed pin updated in `sources.json` |
 | GBA DS Duo | Fork PR [#1](https://github.com/rzrbld/gba-ds/pull/1) merged; [v1.6.1.1](https://github.com/rzrbld/gba-ds/releases/tag/v1.6.1.1) published by CI and installed through Slopetanium; all 23 payload files matched the release ZIP |
 
@@ -21,6 +21,17 @@ not public deployment configuration.
 
 ## Recent verified findings
 
+- Alpha44 incorporates the user's correction to the home UI: the original
+  bubble/carousel remains in one row, compact grids remain at two to four rows,
+  and the original normal face buttons return at every density (X is Edit).
+  Zoom buttons and their hit targets exist only while editing. Source checks,
+  real launcher previews and the expanded input/rendered regression passed,
+  including inactive hidden zoom targets and the normal X footer at all densities.
+  The complete firmware passed image checks and A/B installation; its active
+  kernel, DTB and full root hashes matched. Actual 1280×960 scanout shows the
+  restored one-row bubble, carousel and footer without normal-mode zoom buttons.
+  The writable layout file's checksum was unchanged across the update.
+
 - Alpha43 adds the standard Dark/Light home editor (X, A pick/place, B cancel),
   one-to-four-row density (touch −/+ or editing L/R), and optional installed-port
   home shortcuts (editing Y). Emulators precede apps by default; custom stable-ID
@@ -30,8 +41,7 @@ not public deployment configuration.
   unequal panels. Tests cover collection remapping, canonical port statistics,
   canceled moves, rescan/reinstallation and settings retention. Alpha43 was built
   completely, image-checked, A/B-installed and hash-verified. Its running 1280×960
-  lower-panel capture shows the new menu and icons; user control/layout feedback
-  is pending. Ports/PortMaster and Slopetanium's own views remain separate.
+  lower-panel capture shows the new menu and icons; the user requested the one-row/footer restoration recorded above. Ports/PortMaster and Slopetanium's own views remain separate.
 
 - Alpha41 fixed stale Qualcomm submission/DSP positions after prepare. The
   silent hardware probe advanced 31,680 frames per 0.6 s after both explicit
