@@ -1,5 +1,10 @@
 # Changes
 
+## 0.1.0-alpha.46
+
+- Initialize the upper touchscreen after panel power-up and expose both touchscreens to apps.
+- Associate compositor touch devices with their physical panels and map rotated, unequal panels in native UI and SDL apps.
+
 ## 0.1.0-alpha.45
 
 - Remove the multi-row home frame and page counter, and use the themed horizontal scroll rail for page navigation.

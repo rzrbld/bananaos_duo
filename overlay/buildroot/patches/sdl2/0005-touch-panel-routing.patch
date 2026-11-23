@@ -1,0 +1,72 @@
+From: BananaOS Duo Lite port
+Subject: [PATCH] Map native touchscreens to their own SDL panel
+
+--- a/src/video/dummy/SDL_bananapanels.c
++++ b/src/video/dummy/SDL_bananapanels.c
+@@ -21,6 +21,8 @@
+ #include "SDL_bananapanels.h"
+ 
+ #include <errno.h>
++#include <limits.h>
++#include <stdlib.h>
+ #include <fcntl.h>
+ #include <poll.h>
+ #include <stdio.h>
+@@ -299,13 +301,28 @@
+ }
+ 
+ /* a touch on the bottom panel's touchscreen (0..1 over it) as a place in the window (0..1 over the window) */
+-void BP_MapTouch(float *x, float *y)
+-{
+-    int x0, y0;
+-    if (!bp_on) return;
+-    bp_rect(1, &x0, &y0);
+-    *x = (x0 + *x * bp_p[1].w) / bp_W;
+-    *y = (y0 + *y * bp_p[1].h) / bp_H;
++int BP_MapTouch(float *x, float *y, const char *path)
++{
++    int x0, y0, screen = 1;
++    const char *top = SDL_getenv("BANANA_TOUCH_TOP");
++    if (!bp_on) return 1;
++    if (top && *top) {
++        char sys[PATH_MAX], bus[PATH_MAX];
++        const char *node = strrchr(path, '/');
++        snprintf(sys, sizeof sys, "/sys/class/input/%s/device", node ? node + 1 : path);
++        if (realpath(sys, bus) && strstr(bus, top)) screen = 0;
++    }
++    if (bp_single) {
++        float old_x = *x;
++        if (top && *top && screen != 0) return 0;
++        if (bp_rotation == 270) { *x = 1 - *y; *y = old_x; }
++        else if (bp_rotation == 90) { *x = *y; *y = 1 - old_x; }
++        return 1;
++    }
++    bp_rect(screen, &x0, &y0);
++    *x = (x0 + *x * bp_p[screen].w) / bp_W;
++    *y = (y0 + *y * bp_p[screen].h) / bp_H;
++    return 1;
+ }
+ 
+ void BP_Quit(void)
+--- a/src/video/dummy/SDL_bananapanels.h
++++ b/src/video/dummy/SDL_bananapanels.h
+@@ -17,7 +17,7 @@
+ extern int BP_GBM_Active(void);              /* the window's surface exists */
+ extern int BP_GBM_Enabled(void);             /* EGL runs on the GBM device */
+ extern void BP_GBM_Present(void);            /* after the swap: both panels show the new frame */
+-extern void BP_MapTouch(float *x, float *y);
++extern int BP_MapTouch(float *x, float *y, const char *path);
+ extern void BP_Quit(void);
+ 
+ #endif /* SDL_bananapanels_h_ */
+--- a/src/core/linux/SDL_evdev.c
++++ b/src/core/linux/SDL_evdev.c
+@@ -543,7 +543,7 @@
+                                      (float)item->touchscreen_data->range_y;
+ 
+ #ifdef SDL_VIDEO_DRIVER_DUMMY
+-                            BP_MapTouch(&norm_x, &norm_y);   /* Banana: onto the bottom panel's part of the window */
++                            if (!BP_MapTouch(&norm_x, &norm_y, item->path)) continue;
+ #endif
+                             if (item->touchscreen_data->range_pressure > 0) {
+                                 norm_pressure = (float)(item->touchscreen_data->slots[j].pressure - item->touchscreen_data->min_pressure) /

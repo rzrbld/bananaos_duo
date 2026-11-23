@@ -1,0 +1,32 @@
+#!/usr/bin/python3
+"""Retry the upper I2C touchscreen after the panel's first modeset."""
+import os
+from pathlib import Path
+import subprocess
+import sys
+
+
+def initialize(root=Path('/sys'), top=None, load=None):
+    top = top or os.environ.get('BANANA_TOUCH_TOP', '4a88000.i2c')
+    load = load or (lambda: subprocess.run(['modprobe', 'himax_hx83112b'], check=True))
+    for device in (root / 'bus/i2c/devices').glob('*-*'):
+        if device.name.startswith('i2c-') or top not in str(device.resolve()):
+            continue
+        if (device / 'of_node/compatible').read_bytes().split(b'\0')[0] != b'himax,hx83112a':
+            continue
+        if (device / 'driver').exists():
+            return
+        load()
+        (root / 'bus/i2c/drivers_probe').write_text(device.name + '\n')
+        if not (device / 'driver').exists():
+            raise RuntimeError('Upper touchscreen remained unbound after panel power-up')
+        return
+    raise RuntimeError('Upper touchscreen device not found')
+
+
+if __name__ == '__main__':
+    try:
+        initialize()
+    except (OSError, RuntimeError, subprocess.CalledProcessError) as error:
+        print('Top touchscreen: ' + str(error), file=sys.stderr)
+        sys.exit(1)

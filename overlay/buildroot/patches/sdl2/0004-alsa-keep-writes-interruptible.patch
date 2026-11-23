@@ -1,11 +1,8 @@
 From: Codex <noreply@openai.com>
 Subject: [PATCH] audio: keep ALSA playback interruptible and recover underruns
 
-SDL_CloseAudioDevice joins the playback thread after clearing enabled. A
-blocking snd_pcm_writei can wait forever on the handheld's shared PCM and
-never observe that flag. Use SDL's existing nonblocking playback path.
-Recover startup underruns in WaitDevice instead of disconnecting a usable
-device; PlayDevice already recovers the same errors.
+Retain the existing nonblocking playback, short refill polling and two-period
+prefill policy in one patch against the pinned SDL release.
 
 --- a/src/audio/alsa/SDL_alsa_audio.c
 +++ b/src/audio/alsa/SDL_alsa_audio.c
@@ -18,7 +15,7 @@ device; PlayDevice already recovers the same errors.
  #endif
  
  /* without the thread, you will detect devices on startup, but will not get futher hotplug events. But that might be okay. */
-@@ -247,11 +247,17 @@
+@@ -247,14 +247,22 @@
      while (SDL_AtomicGet(&this->enabled)) {
          const snd_pcm_sframes_t rc = ALSA_snd_pcm_avail(this->hidden->pcm_handle);
          if ((rc < 0) && (rc != -EAGAIN)) {
@@ -39,14 +36,6 @@ device; PlayDevice already recovers the same errors.
 +            }
 +            continue;
          } else if (rc < needed) {
-             const Uint32 delay = ((needed - (SDL_max(rc, 0))) * 1000) / this->spec.freq;
-             SDL_Delay(SDL_max(delay, 10));
-
---- a/src/audio/alsa/SDL_alsa_audio.c
-+++ b/src/audio/alsa/SDL_alsa_audio.c
-@@ -264,7 +264,9 @@
-             continue;
-         } else if (rc < needed) {
 -            const Uint32 delay = ((needed - (SDL_max(rc, 0))) * 1000) / this->spec.freq;
 -            SDL_Delay(SDL_max(delay, 10));
 +            /* Hardware periods can be only 10 ms. Sleeping a full period
@@ -56,13 +45,21 @@ device; PlayDevice already recovers the same errors.
          } else {
              break; /* ready to go! */
          }
-
---- a/src/audio/alsa/SDL_alsa_audio.c
-+++ b/src/audio/alsa/SDL_alsa_audio.c
-@@ -558,2 +558,2 @@
+@@ -550,7 +558,7 @@
+     }
+ 
      /* Need to at least double buffer */
 -    periods = 2;
 +    periods = this->iscapture ? 2 : 3;
-@@ -746,1 +746,1 @@
+     status = ALSA_snd_pcm_hw_params_set_periods_min(
+         this->hidden->pcm_handle, hwparams, &periods, NULL);
+     if (status < 0) {
+@@ -735,7 +743,7 @@
+         return SDL_SetError("Couldn't set minimum available samples: %s", ALSA_snd_strerror(status));
+     }
+     status =
 -        ALSA_snd_pcm_sw_params_set_start_threshold(pcm_handle, swparams, 1);
 +        ALSA_snd_pcm_sw_params_set_start_threshold(pcm_handle, swparams, iscapture ? 1 : this->spec.samples * 2);
+     if (status < 0) {
+         return SDL_SetError("ALSA: Couldn't set start threshold: %s", ALSA_snd_strerror(status));
+     }

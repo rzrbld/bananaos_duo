@@ -1,0 +1,3 @@
+# Keep touches on their physical display, including a compositor with one output disabled.
+SUBSYSTEM=="input", KERNEL=="event*", ENV{ID_INPUT_TOUCHSCREEN}=="1", KERNELS=="4a88000.i2c", ENV{WL_OUTPUT}="DSI-1"
+SUBSYSTEM=="input", KERNEL=="event*", ENV{ID_INPUT_TOUCHSCREEN}=="1", KERNELS=="4c80000.i2c", ENV{WL_OUTPUT}="DP-1"

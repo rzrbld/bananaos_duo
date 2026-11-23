@@ -21,6 +21,25 @@ not public deployment configuration.
 
 ## Recent verified findings
 
+- Alpha46 candidate restores upper touchscreen initialization after the first
+  display modeset and provides per-output compositor assignments. An initial
+  live reprobe registered the existing Himax driver, and the user confirmed
+  accurate top-panel touch in Greenlight. Native UI and SDL coordinate checks
+  cover rotation, unequal panels and filtering a disabled lower output. The
+  full image and source checks passed locally; installation and reboot/sleep
+  verification are pending. A fresh SDL build exposed a short-context audio
+  patch failure; its hunks are consolidated against the pinned SDL tarball,
+  preserving the existing nonblocking writes, refill polling and prefill policy.
+
+- Greenlight is an independent app at `rzrbld/greenlight`, not firmware content.
+  CI published v2.4.2-duo.1; its actual ZIP passed checksum and Slopetanium
+  installation checks. The user installed it and confirmed gamepad and top
+  touch input. Streaming exposed a frozen physical image despite advancing
+  decode counters, increasing shared memory and a graphics-fence wait during
+  cleanup; one attempt also triggered the OOM killer. The app is a bring-up
+  preview and streaming is not yet working reliably. Diagnosis remains in the
+  app workspace; do not describe menu startup as full streaming compatibility.
+
 - Alpha45 removes the multi-row frame and page counter, reuses the themed
   horizontal rail for touch page navigation, enlarges the selected grid icon by
   10% with a bold system-accent outline, and uses normal themed face buttons for

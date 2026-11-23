@@ -1,0 +1,121 @@
+From: BananaOS Duo Lite port
+Subject: [PATCH] Initialize top touch after panel power-up and map unequal panels
+
+--- a/ui/src/input.h
++++ b/ui/src/input.h
+@@ -30,7 +30,7 @@
+ 	public:
+ 		~Input() { close(); }
+ 		// bottomTouch: a fragment of the bottom touchscreen's device path ("fe5e0000.i2c")
+-		void open(const std::string& bottomTouch, int panelW, int panelH);
++		void open(const std::string& bottomTouch, int panelW, int panelH, int topW = 0);
+ 		void close();
+ 		// a device came or went in /dev/input (watched with inotify): open() again to take it
+ 		bool rescanDue() { bool r = rescan; rescan = false; return r; }
+@@ -45,7 +45,7 @@
+ 		{
+ 			int fd = -1;
+ 			bool touch = false, pointer = false;	// pointer: an absolute pointer whose button is BTN_LEFT
+-			int screen = 1;
++			int screen = 1, rotation = 0;
+ 			int minX = 0, maxX = 0, minY = 0, maxY = 0;
+ 			int x = 0, y = 0;
+ 			bool down = false, wasDown = false, moved = false;
+@@ -56,7 +56,7 @@
+ 			int stickMid[2] = { 0, 0 }, stickHalf[2] = { 1, 1 }, stickDir[2] = { 0, 0 };
+ 		};
+ 		std::vector<Dev> devs;
+-		int pw = 640, ph = 480;
++		int pw = 640, ph = 480, tw = 640;
+ 		int watch = -1;
+ 		bool rescan = false;
+ 	};
+--- a/ui/src/input.cpp
++++ b/ui/src/input.cpp
+@@ -1,4 +1,5 @@
+ #include "input.h"
++#include "touch_geometry.h"
+ #include <algorithm>
+ #include <cstdlib>
+ #include <climits>
+@@ -56,10 +57,10 @@
+ 		return real;
+ 	}
+ 
+-	void Input::open(const std::string& bottomTouch, int panelW, int panelH)
++	void Input::open(const std::string& bottomTouch, int panelW, int panelH, int topW)
+ 	{
+ 		close();
+-		pw = panelW; ph = panelH;
++		pw = panelW; ph = panelH; tw = topW > 0 ? topW : panelW;
+ 		watch = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
+ 		if (watch >= 0) inotify_add_watch(watch, "/dev/input", IN_CREATE | IN_DELETE | IN_ATTRIB);
+ 		DIR* d = opendir("/dev/input");
+@@ -94,7 +95,12 @@
+ 				if (testBit(abs, ABS_X) && testBit(abs, ABS_Y) && ioctl(fd, EVIOCGABS(ABS_X), &px) == 0 && ioctl(fd, EVIOCGABS(ABS_Y), &py) == 0)
+ 				{ dv.x = px.value; dv.y = py.value; }
+ 				else { dv.x = ax.value; dv.y = ay.value; }
+-				dv.screen = sysPath(e->d_name).find(bottomTouch) != std::string::npos ? 1 : 0;
++				const std::string bus = sysPath(e->d_name);
++				dv.screen = bus.find(bottomTouch) != std::string::npos ? 1 : 0;
++				const char* top = std::getenv("BANANA_TOUCH_TOP");
++				const char* rotation = std::getenv("BANANA_TOP_ROTATION");
++				if (top && *top && bus.find(top) != std::string::npos && rotation)
++					dv.rotation = std::atoi(rotation);
+ 			}
+ 			else
+ 			{
+@@ -188,9 +194,10 @@
+ 					{
+ 						InputEvent o;
+ 						o.screen = dv->screen;
+-						float sx = dv->maxX > dv->minX ? (float)pw / (dv->maxX - dv->minX + 1) : 1;
+-						float sy = dv->maxY > dv->minY ? (float)ph / (dv->maxY - dv->minY + 1) : 1;
+-						o.x = (dv->x - dv->minX) * sx; o.y = (dv->y - dv->minY) * sy;
++						const float nx = float(dv->x - dv->minX) / std::max(1, dv->maxX - dv->minX);
++						const float ny = float(dv->y - dv->minY) / std::max(1, dv->maxY - dv->minY);
++						const auto point = touchPoint(nx, ny, dv->rotation, dv->screen == 0 ? tw : pw, ph);
++						o.x = point.x; o.y = point.y;
+ 						if (dv->down && !dv->wasDown) { o.type = InputEvent::TOUCH_DOWN; sink1(o, e); }
+ 						else if (dv->down && dv->moved) { o.type = InputEvent::TOUCH_MOVE; sink1(o, e); }
+ 						else if (!dv->down && dv->wasDown) { o.type = InputEvent::TOUCH_UP; sink1(o, e); }
+--- a/ui/src/main.cpp
++++ b/ui/src/main.cpp
+@@ -2256,6 +2256,10 @@
+ 	SoftBackend be(disp.width(), disp.height(), disp.width(0));
+ 	logf("panels %dx%d%s", disp.width(), disp.height(), disp.masterAtOpen ? "" : " (the display's master still held by another program: taken at the first frame)");
+ 	bootMark("banana-ui: panels open");
++	// Retry an unbound top touch controller after the first display modeset.
++	if (access("/usr/libexec/banana/duolite-touchscreen", X_OK) == 0 &&
++		system("/usr/libexec/banana/duolite-touchscreen") != 0)
++		logf("top touchscreen initialization failed");
+ 	// the screen colours (Settings > Display & sound > Screen colours): the one colour table, on the screen it corrects
+ 	auto applyColors = [&](const char* when)
+ 	{
+@@ -2337,7 +2341,7 @@
+ 	const bool setupNow = firstSetup || !setupAt.empty();
+ 
+ 	Input input;
+-	input.open(o.touch, disp.width(), disp.height());
++	input.open(o.touch, disp.width(), disp.height(), disp.width(0));
+ 	float scale = disp.height() / 480.0f;
+ 	Settings settingsView(&be, o.assets, o.data, scale, variant);
+     settingsView.audioTest = [&](bool active) {
+@@ -3239,7 +3243,7 @@
+ 		if (settingsView.colorsOpen()) disp.setColors(ScreenColors());
+ 		else applyColors("after the game");
+ 		be.invalidate();
+-		input.open(o.touch, disp.width(), disp.height());
++		input.open(o.touch, disp.width(), disp.height(), disp.width(0));
+ 		bottomIdle.setOwned(false, nowMs());	// the game session is over: the menu keeps the bottom screen awake
+ 		std::lock_guard<std::mutex> l(worker.uiLock);
+ 		{
+@@ -3355,7 +3359,7 @@
+ 			std::lock_guard<std::mutex> l(worker.uiLock);
+ 			if (rearrange(lib, *ui)) dirty = true;
+ 		}
+-		if (input.rescanDue()) input.open(o.touch, disp.width(), disp.height());	// a pad came or went
++		if (input.rescanDue()) input.open(o.touch, disp.width(), disp.height(), disp.width(0));	// a pad came or went
+ 		{
+ 			// the display controller's interrupt storm, looked at every 10 s without waiting: over 20000 a second on
+ 			// average since the last look, the full check (it measures again and switches the panels off and on)
