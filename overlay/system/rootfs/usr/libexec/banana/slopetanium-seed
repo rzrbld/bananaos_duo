@@ -1,15 +1,21 @@
 #!/usr/bin/python3
 """Install the firmware seed once; preserve independently updated app payloads."""
 from pathlib import Path
+import argparse
 import sys
 
-SEED='/usr/share/slopetanium/seed.zip'
+parser=argparse.ArgumentParser(description=__doc__)
+parser.add_argument('--archive', default='/usr/share/slopetanium/seed.zip')
+parser.add_argument('--version-file', default='/usr/share/slopetanium/seed-version')
+parser.add_argument('--data', default='/data/slopetanium')
+args=parser.parse_args()
+SEED=args.archive
 sys.path.insert(0,SEED+'/slopetanium/app')
 from apps import Apps
-manager=Apps('/data/slopetanium/packages','/data/slopetanium/.entries')
+manager=Apps(str(Path(args.data)/'packages'),str(Path(args.data)/'.entries'))
 info=manager.info('rzrbld/slopetanium')
 if info is None:
-    version=Path('/usr/share/slopetanium/seed-version').read_text().strip()
+    version=Path(args.version_file).read_text().strip()
     info=manager.install('rzrbld/slopetanium',version,SEED)
 root=Path(info['_dir'])
 if not (root/'slopetanium/app/slopetanium.py').is_file() or not (root/'slopetanium/slopetanium-ui.aarch64').is_file():
