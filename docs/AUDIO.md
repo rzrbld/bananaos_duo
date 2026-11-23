@@ -49,7 +49,7 @@ microphone routing are unchanged by this SDL patch.
 
 ## Qualcomm stream preparation recovery
 
-The Alpha41 candidate backports the position-reset changes from
+Alpha41 backports the position-reset changes from
 [Michael McAllister's q6asm patch](https://lkml.iu.edu/2610.2/14705.html).
 ALSA prepares a new stream after an underrun and resets its application pointer.
 The old driver retained its submission index and DSP ring positions, allowing the
@@ -67,3 +67,34 @@ clients using the device-testing procedure, and run it on the handheld. It write
 silence, checks initial/drop-prepare/underrun-recovery progress and exits nonzero
 if playback stalls. Kernel compilation alone is not proof of audible output;
 validate the installed driver and listen to the game afterward.
+
+
+Alpha41 was installed and hash-verified. The silent regression changed from
+2,880 frames after prepare / 1,920 after XRUN recovery to 31,680 in each phase
+(over 0.6 s), with a successful exit. The user then heard playback, but reported
+distortion. This exposed a separate SDL refill problem rather than disproving
+the kernel recovery fix.
+
+An SDL-only test queued two seconds of silent stereo S16 audio at 48 kHz and
+measured consumption after one second. Alpha41 consumed only 71,680 bytes and
+repeatedly underran, without an emulator. A 1 ms wait alone consumed 86,016 bytes
+and still underran. Alpha42 additionally uses three playback periods and starts
+after two periods are filled. Capture buffering is unchanged. The complete
+candidate's library consumed 198,656 bytes in the same test (approximately the
+expected 192,000 bytes, allowing initial queue fill), with one recovered startup
+underrun and no repeating underrun loop.
+
+With that complete candidate's library, the unchanged installed GBA DS v1.6.1.1
+ran a 1,202-frame controlled test using temporary saves and restored the launcher.
+Its hardware pointer advanced from 144,000 to 192,960 over about one second;
+logged gameplay ran 59.3–60 FPS with a 0–39 ms queue, rather than a stationary
+hardware pointer and a saturated queue. One game-side underrun remained in a
+five-second interval; this is not a claim of universally glitch-free audio.
+Physical listening confirmation is still required for the final installed build.
+
+
+The complete Alpha42 firmware was subsequently installed in slot A and its
+kernel, DTB and full immutable root matched the built components. The same
+SDL-only test using the installed library consumed 196,608 bytes in one second,
+returned success and logged no underruns. The launcher was restored. Final
+listening confirmation remains pending.

@@ -9,8 +9,8 @@ Stable project rules live in [AGENTS.md](../AGENTS.md), not in this snapshot.
 | Item | Verified state |
 | --- | --- |
 | Public firmware release | `v0.1.0-alpha.35`; later local development versions are not public OTA releases yet |
-| Current local firmware | `0.1.0-alpha.40`, complete local image built and checked; SDL audio shutdown fix plus startup-underrun recovery |
-| Development handheld | Alpha40 running in slot A; kernel, DTB and complete immutable root matched the checked local image; gamepad registered and launcher recovered |
+| Current local firmware | `0.1.0-alpha.42`, complete local image built and checked; Qualcomm PCM recovery plus SDL playback prefill/refill fixes |
+| Development handheld | Alpha42 running in slot A; kernel, DTB and complete immutable root matched the checked local image; gamepad registered and launcher restored |
 | Slopetanium | Public `v0.3.2-beta`; writable app independently updated from CI and all 34 packaged files verified; next nightly seed pin updated in `sources.json` |
 | GBA DS Duo | Fork PR [#1](https://github.com/rzrbld/gba-ds/pull/1) merged; [v1.6.1.1](https://github.com/rzrbld/gba-ds/releases/tag/v1.6.1.1) published by CI and installed through Slopetanium; all 23 payload files matched the release ZIP |
 
@@ -20,6 +20,18 @@ repository. Paths and private device connection details belong to the workspace,
 not public deployment configuration.
 
 ## Recent verified findings
+
+- Alpha41 fixed stale Qualcomm submission/DSP positions after prepare. The
+  silent hardware probe advanced 31,680 frames per 0.6 s after both explicit
+  prepare and XRUN recovery, versus 2,880 / 1,920 on Alpha40. The user then heard
+  audio but reported distortion. An emulator-free SDL test reproduced repeated
+  underruns. Alpha42 prefills two playback periods in a three-period ring and
+  polls refill availability briefly; capture buffering is unchanged. Installed
+  Alpha42 consumed 196,608 bytes of queued 48 kHz stereo S16 silence in one second
+  without logged underruns, versus 71,680 on Alpha41. A controlled GBA DS test
+  using the complete candidate library ran 59.3–60 FPS, advanced the PCM pointer
+  at 48 kHz and exited normally with temporary saves. Final listening confirmation
+  remains pending; do not equate silent transport tests with audible quality.
 
 - Slopetanium v0.3.2-beta caches successful startup checks for one hour across
   launches; only stale repositories are refreshed. Manual X / Check for updates
