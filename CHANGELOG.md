@@ -2,7 +2,7 @@
 
 ## 0.1.0-alpha.42
 
-- Poll SDL nonblocking ALSA playback at 1 ms instead of sleeping at least one complete hardware period, avoiding repeated refill underruns on the Duo Lite.
+- Poll SDL nonblocking ALSA playback at 1 ms instead of sleeping at least one complete hardware period, and prefill two periods in a three-period playback buffer to avoid repeated refill underruns on the Duo Lite.
 
 ## 0.1.0-alpha.41
 

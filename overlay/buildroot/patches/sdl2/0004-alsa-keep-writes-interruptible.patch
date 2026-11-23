@@ -56,3 +56,13 @@ device; PlayDevice already recovers the same errors.
          } else {
              break; /* ready to go! */
          }
+
+--- a/src/audio/alsa/SDL_alsa_audio.c
++++ b/src/audio/alsa/SDL_alsa_audio.c
+@@ -558,2 +558,2 @@
+     /* Need to at least double buffer */
+-    periods = 2;
++    periods = this->iscapture ? 2 : 3;
+@@ -746,1 +746,1 @@
+-        ALSA_snd_pcm_sw_params_set_start_threshold(pcm_handle, swparams, 1);
++        ALSA_snd_pcm_sw_params_set_start_threshold(pcm_handle, swparams, iscapture ? 1 : this->spec.samples * 2);
