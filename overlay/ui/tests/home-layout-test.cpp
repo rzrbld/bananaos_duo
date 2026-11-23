@@ -13,6 +13,19 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "../third_party/stb_image_write.h"
 using namespace banana;
+static rnds::Bitmap decode(const std::string& path) {
+ rnds::Bitmap b;int w,h,n;auto px=stbi_load(path.c_str(),&w,&h,&n,4);
+ if(px) {b.w=w;b.h=h;b.px.assign(px,px+(size_t)w*h*4);stbi_image_free(px);}return b;
+}
+static void selectedAccent(SoftBackend& be,const rnds::HomeGrid& g,int at) {
+ int left=be.width(1),right=-1,pixels=0;
+ for(int y=std::max(0,(int)g.y(at)-8);y<std::min(be.height(),(int)(g.y(at)+g.icon)+8);++y)
+  for(int x=std::max(0,(int)g.x(at)-8);x<std::min(be.width(1),(int)(g.x(at)+g.icon)+8);++x)
+   if((be.pixels(1)[(size_t)y*be.width(1)+x]&0xffffff)==rnds::accent.base) {left=std::min(left,x);right=std::max(right,x);++pixels;}
+ assert(right-left+1>g.icon); // Selected tile extends beyond the normal tile footprint.
+ assert(pixels>g.icon*8); // A substantial colored outline, not a tiny colored marker.
+}
+
 static void write(const std::filesystem::path& p,const std::string& s) {std::filesystem::create_directories(p.parent_path());std::ofstream(p)<<s;}
 static int find(Library& lib,const std::string& id) {for(int i=0;i<lib.systemCount();++i)if(lib.system(i).id==id)return i;return -1;}
 static void save(SoftBackend& be,const std::string& path) {
@@ -26,6 +39,7 @@ static void save(SoftBackend& be,const std::string& path) {
  }
 }
 int main(int argc,char**argv) {
+ rnds::setDecoder(decode);assert(rnds::setAccent("blue"));
  assert(argc==3);namespace fs=std::filesystem;fs::path out=argv[2];fs::create_directories(out);
  fs::path root=out/"fixture";fs::remove_all(root);fs::create_directories(root/"banana");
  std::string conf="[storeapps]\nfolder="+(root/"tiles").string()+"\next=sh\nflat=yes\nrun=test-app %ROM%\n";
@@ -60,11 +74,12 @@ int main(int argc,char**argv) {
   lib.setHomeRows(rows);ui.setHome(0);ui.update(2000+rows*1000);ui.render();
   ui.finishWork();ui.update(2500+rows*1000);ui.render();save(be,(out/("rows-"+std::to_string(rows))).string());
   rnds::HomeGrid g(rows,lib.systemCount(),0,640);
+  if(rows>1) selectedAccent(be,g,0);
   for(int i=0;i<std::min(g.capacity,lib.systemCount());++i) {
    assert(g.x(i)>=20 && g.x(i)+g.icon<=620);assert(g.y(i)>=90 && g.y(i)+g.icon+20<=376);
    assert(g.hit(g.x(i)+g.icon/2,g.y(i)+g.icon/2)==i);
   }
-  ui.touch(1,48,410,true);ui.touch(1,48,410,false);assert(lib.homeRows()==std::min(4,rows+1));
+  ui.touch(1,48,442,true);ui.touch(1,48,442,false);assert(lib.homeRows()==std::min(4,rows+1));
  }
  ui.press(rnds::UI::R);assert(lib.homeRows()==3);ui.press(rnds::UI::L);assert(lib.homeRows()==4);
  ui.press(rnds::UI::X);assert(!ui.editingHome());ui.press(rnds::UI::DOWN);assert(ui.systemIndex()==rnds::HomeGrid(4,lib.systemCount(),0,640).columns);
@@ -77,6 +92,15 @@ int main(int argc,char**argv) {
   ui.touch(1,590,442,true);ui.touch(1,590,442,false);assert(ui.editingHome());
   ui.press(rnds::UI::B);assert(!ui.editingHome());
  }
+
+ // The multi-row rail moves across pages without changing density or entering edit mode.
+ lib.setHomeRows(2);ui.setHome(0);ui.touch(1,600,401,true);ui.touch(1,600,401,false);
+ assert(ui.systemIndex()>=rnds::HomeGrid(2,lib.systemCount(),0,640).capacity && lib.homeRows()==2 && !ui.editingHome());
+ ui.touch(1,25,401,true);ui.touch(1,25,401,false);assert(ui.systemIndex()<rnds::HomeGrid(2,lib.systemCount(),0,640).capacity);
+ // Red accent and light theme must use the same selection contract.
+ assert(rnds::setAccent("red"));lib.setHomeRows(4);SoftBackend lightBe(640,480,854);
+ rnds::UI light(&lib,&lightBe,argv[1],1,"light");light.setHome(0);light.update(50000);light.render();light.finishWork();light.render();
+ save(lightBe,(out/"light-red-grid").string());selectedAccent(lightBe,rnds::HomeGrid(4,lib.systemCount(),0,640),0);
  // Removing/reinstalling an app preserves stable identity and unrelated positions.
  fs::remove(root/"tiles/Reader.sh");lib.scan();write(root/"tiles/Reader.sh","#!/bin/sh\n");lib.scan();assert(find(lib,"app:Reader.sh")==1);
  for(int rows=1;rows<=4;++rows)for(int n:{0,1,5,31,103})for(int at=0;at<std::max(1,n);++at) {

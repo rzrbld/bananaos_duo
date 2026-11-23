@@ -1,0 +1,159 @@
+--- a/ui/rnds/RndsUI.cpp
++++ b/ui/rnds/RndsUI.cpp
+@@ -1134,26 +1134,42 @@
+ 		void homePage(int dir) {
+ 			if(sysCount()) setSystem(std::clamp(ui->mSys+dir*homeGrid().capacity,0,sysCount()-1));
+ 		}
++		struct HomeFace { Face face; float x, w; };
++		std::vector<HomeFace> homeEditFaces()
++		{
++			std::vector<Face> faces={
++				{"L","-",0,ACT_ZOOM_OUT}, {"R","+",0,ACT_ZOOM_IN},
++				{"Y",src->homePorts()?"Ports: home":"Ports: shelf",src->homePorts()?1:0,ACT_HOME_PORTS},
++				{"X","Done",0,ACT_HOME_EDIT}
++			};
++			float total=0; for(const auto& f:faces) total+=faceW(f);
++			float gap=std::max(4.0f,(604-total)/3),x=18;
++			std::vector<HomeFace> out;
++			for(const auto& f:faces) { float w=faceW(f); out.push_back({f,x,w}); x+=w+gap; }
++			return out;
++		}
+ 		int hitHome(float x,float y,int& slot)
+ 		{
+-			float w=homeGrid().width;
++			if(homeEdit && y>=422 && y<462) {
++				for(const auto& f:homeEditFaces()) if(x>=f.x && x<f.x+f.w) return f.face.action;
++				return ACT_NONE;
++			}
+ 			if(!homeEdit) {
+ 				auto g=geometry();
+ 				if(y>=422 && y<462 && x>=18 && x<18+g.leftW) return g.left.action;
+ 				if(y>=422 && y<462 && x>=622-g.rightW && x<622) return g.right.action;
+ 			}
+-			if(homeEdit && y>=390 && y<430) {
+-				if(x>=20 && x<76) return ACT_ZOOM_OUT;
+-				if(x>=84 && x<140) return ACT_ZOOM_IN;
+-				if(homeEdit && x>=w-310 && x<w-140) return ACT_HOME_PORTS;
+-				if(homeEdit && x>=w-130 && x<w-20) return ACT_HOME_EDIT;
+-			}
+-			if(y>=10 && y<48) {
+-				if(x<70) return ACT_HOME_PREV;
+-				if(x>w-70) return ACT_HOME_NEXT;
+-			}
++			if(sysCount()>0 && y>=384 && y<420 && x>=12 && x<628) return ACT_RAIL;
+ 			slot=homeGrid().hit(x,y);
+ 			return slot<0 ? ACT_NONE : ACT_SLOT;
++		}
++		void drawHomeRail()
++		{
++			const auto g=homeGrid();
++			int pages=std::max(1,(sysCount()+g.capacity-1)/g.capacity);
++			int at=g.rows==1?ui->mSys:g.first/g.capacity, n=g.rows==1?sysCount():pages;
++			drawBox(railBox(),18,396,604,10);
++			drawBox(thumbBox(),20+thumbLeft(at,n,600),394,42,14);
+ 		}
+ 		void drawHomeControls()
+ 		{
+@@ -1166,19 +1182,10 @@
+ 				for(size_t i=0;i<g.mids.size();++i) { drawFace(g.mids[i],x,g.midW[i],false); x+=g.midW[i]+10; }
+ 				return;
+ 			}
+-			float w=homeGrid().width;
+-			auto button=[&](const std::string& label,float x,float width) {
+-				drawBox(kbdBox(),x,390,width,40);
+-				drawFit(label,ts(true,18),x+5,400,22,width-10,P.kbdInk,false,true);
+-			};
+-			button("-",20,56); button("+",84,56);
+-			drawFit(std::to_string(src->homeRows())+(src->homeRows()==1?" row":" rows"),ts(false,16),150,401,20,96,INK,false);
+-			if(homeEdit) {
+-				button(src->homePorts()?"Ports: home":"Ports: shelf",w-310,170);
+-				button("X  Done",w-130,110);
+-			}
+-			std::string hint=homeEdit ? (heldHome.empty()?"A Pick up  B Done  L/R Zoom  Y Ports":"A Place  B Cancel  L/R Zoom") : "A Open  X Edit  START Settings  SELECT Search";
+-			drawFit(hint,ts(false,16),18,448,20,w-36,MUTED,false,true);
++			for(const auto& f:homeEditFaces()) drawFace(f.face,f.x,f.w,pressedAction==f.face.action);
++			std::string hint=std::to_string(src->homeRows())+(src->homeRows()==1?" row  ":" rows  ");
++			hint+=heldHome.empty()?"A Pick up  B Done":"A Place  B Cancel";
++			drawFit(hint,ts(false,16),18,src->homeRows()==1?370:65,20,604,MUTED,false,true);
+ 		}
+ 		void drawHome()
+ 		{
+@@ -1186,24 +1193,22 @@
+ 			const auto g=homeGrid(); float w=g.width;
+ 			if(!wallBottom.empty()) drawSprite(still("wall-bottom",wallBottom,true),0,0);
+ 			drawBox(screenBox(!wallBottom.empty()),0,0,w,480);
+-			drawBox(bubbleBox(),12,60,w-24,318);
+-			drawFit("<",ts(true,24),20,18,28,40,INK,false,true);
+-			drawFit(">",ts(true,24),w-60,18,28,40,INK,false,true);
++
++
+ 			std::string title=homeEdit ? (heldHome.empty() ? "Edit home menu" : "Choose a position") : (sysCount() ? sys(ui->mSys).name : "Home menu");
+ 			drawFit(title,ts(true,24),72,15,30,w-144,INK,true,true);
+-			std::string sub=std::to_string(sysCount() ? g.first/g.capacity+1 : 1)+" / "+std::to_string(std::max(1,(sysCount()+g.capacity-1)/g.capacity));
+-			if(homeEdit && !heldHome.empty()) for(int i=0;i<sysCount();++i) if(sys(i).id==heldHome) sub="Moving: "+sys(i).name;
+-			drawFit(sub,ts(false,16),24,65,20,w-48,MUTED,false,true);
+ 			for(int i=g.first;i<std::min(sysCount(),g.first+g.capacity);++i) {
+-				const auto& si=sys(i); float x=g.x(i),y=g.y(i); bool selected=i==ui->mSys;
+-				drawBox(slotBox(selected),x,y,g.icon,g.icon);
++				const auto& si=sys(i); bool selected=i==ui->mSys;
++				float size=g.icon*(selected?1.10f:1.0f);
++				float x=g.x(i)+(g.icon-size)/2,y=g.y(i)+(g.icon-size)/2;
++				drawBox(slotBox(selected),x,y,size,size);
+ 				Sprite ic=icon(si.icon);
+-				if(ic.valid()) be->draw(ic.tex,X(x+g.icon/12),X(y+g.icon/12),X(g.icon*5/6),X(g.icon*5/6),Color(1,1,1,1));
+-				if(si.id==heldHome) drawBox(badgeBox(),x+g.icon-12,y+3,10,10);
++				if(ic.valid()) be->draw(ic.tex,X(x+size/12),X(y+size/12),X(size*5/6),X(size*5/6),Color(1,1,1,1));
++				if(si.id==heldHome) drawBox(badgeBox(),x+size-12,y+3,10,10);
+ 				Verbatim vb;
+-				drawFit(si.name,ts(false,g.rows>=3 ? 12 : 16),x-(g.cellWidth-g.icon)/2+2,y+g.icon+3,18,g.cellWidth-4,selected?INK:MUTED,false,true);
+-			}
+-			drawHomeControls();
++				drawFit(si.name,ts(false,g.rows>=3 ? 12 : 16),g.x(i)-(g.cellWidth-g.icon)/2+2,g.y(i)+g.icon+6,18,g.cellWidth-4,selected?INK:MUTED,false,true);
++			}
++			drawHomeRail(); drawHomeControls();
+ 			be->endScreen();
+ 		}
+ 
+@@ -1573,6 +1578,7 @@
+ 		BoxCss slotBox(bool on)
+ 		{
+ 			BoxCss b; b.key = on ? "slot1" : "slot0"; b.radius = 14; b.border = 3; b.borderColor = on ? P.slotOn : EDGE;
++			if(on && ui->mView==HOME) { b.key="home-slot-selected"; b.border=4.5f; b.borderColor=Color::hex(accent.base); }
+ 			b.bg = P.panelBody;
+ 			b.bands = { Band{ 0, 8, P.panelBand }, Band{ 8, -1, P.panelBody } };
+ 			b.shadows = { inset(0, -6, 0, P.panelLow), outer(3, 3, SHADE45) };
+@@ -2084,6 +2090,17 @@
+ 		// the game list's rail under a finger at x (CSS px): the game whose thumb has its middle nearest to it
+ 		void railTo(float x)
+ 		{
++			if(ui->mView==HOME) {
++				const auto g=homeGrid(); int n=sysCount();
++				if(!n) return;
++				int pages=std::max(1,(n+g.capacity-1)/g.capacity);
++				int total=g.rows==1?n:pages;
++				int at=total<2?0:(int)std::lround((x-41)*(total-1)/558);
++				at=std::clamp(at,0,total-1);
++				int target=g.rows==1?at:std::min(n-1,at*g.capacity+ui->mSys%g.capacity);
++				if(target!=ui->mSys) setSystem(target);
++				return;
++			}
+ 			int n = src->gameCount();
+ 			if (ui->mView != LIBRARY || n == 0) return;
+ 			float inner = 604 - railCut(n) - 4;
+@@ -2229,7 +2246,7 @@
+ 			}
+ 			be->popClip();
+ 
+-			if(v==HOME && homeEdit) { drawHomeControls(); be->endScreen(); return; }
++			if(v==HOME && homeEdit) { drawHomeRail(); drawHomeControls(); be->endScreen(); return; }
+ 
+ 			// rail
+ 			int at = v == LAUNCH ? 0 : center(), total = v == LAUNCH ? 1 : n;
+@@ -2537,6 +2554,7 @@
+ 			d->pressedAction = 0; d->pressedSide = -1; d->pressedArrow = -1; d->railDrag = false;	// a lift that never came
+ 			int slot, side;
+ 			int a = d->hit(cx, cy, slot, side);
++			if(a==ACT_ZOOM_OUT || a==ACT_ZOOM_IN || a==ACT_HOME_PORTS || a==ACT_HOME_EDIT) d->pressedAction=a;
+ 			if ((a == ACT_FAV || a == ACT_RESUME || a == ACT_BACK) && side >= 0) { d->pressedAction = a; d->pressedSide = side; }
+ 			if ((a == ACT_PREV || a == ACT_NEXT) && mView == LIBRARY) d->pressedArrow = a == ACT_PREV ? 0 : 1;
+ 			// the rail: the cursor jumps under the finger, and follows it until it lifts (touchMove)

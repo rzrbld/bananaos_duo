@@ -6,12 +6,12 @@ custom order takes precedence over that default grouping. The upper panel keeps
 the selected item's normal preview; the lower panel keeps the original bubble/carousel for one row and uses a compact grid for two to four rows.
 
 - **A** opens the selected emulator/app. Tap an icon to select it, then tap it
-  again to open it. D-pad moves selection; L/R or the top arrows change page.
+  again to open it. D-pad moves selection. L/R change page in a grid, or move one item in the original one-row carousel. The multi-row bottom rail also supports touch scrubbing between pages.
 - **X** enters editing. A picks up the selected icon; move the cursor with the
   D-pad, then A places it. Touch can pick up and place too. B cancels a picked-up
   move. X, or B without an icon picked up, finishes editing.
 - While editing, **−** zooms out by adding a row; **+** zooms in by removing one. One to four
-  rows are supported. In editing, L is − and R is +.
+  rows are supported. The themed edit buttons show L for − and R for +.
 - **Y** in editing, or **Ports: shelf / Ports: home**, toggles installed ports on
   home. Finish/cancel a picked-up move before changing port visibility.
   PortMaster itself stays in the Ports shelf. These are OS shortcuts: the
@@ -29,6 +29,9 @@ Home shortcuts for ports share the original port's play statistics and favorites
 Search, Favorites and Recently played use canonical port entries, so showing a
 port on home does not duplicate it in those collections. Collection mappings are
 updated when icons move; they continue launching through the original system.
+
+Multi-row layouts have no surrounding frame or page counter. The selected tile
+is slightly enlarged with a bold outline in the chosen system accent color.
 
 The Ports library, PortMaster UI and Slopetanium library layout are separate from
 this first home-menu change.

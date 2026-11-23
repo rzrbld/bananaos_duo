@@ -1,5 +1,10 @@
 # Changes
 
+## 0.1.0-alpha.45
+
+- Remove the multi-row home frame and page counter, and use the themed horizontal scroll rail for page navigation.
+- Enlarge the selected grid tile with a thicker accent-colored outline; match edit controls to the system face buttons.
+
 ## 0.1.0-alpha.44
 
 - Restore the original one-row home bubble, carousel and normal bottom face buttons.
