@@ -9,8 +9,8 @@ Stable project rules live in [AGENTS.md](../AGENTS.md), not in this snapshot.
 | Item | Verified state |
 | --- | --- |
 | Public firmware release | `v0.1.0-alpha.35`; later local development versions are not public OTA releases yet |
-| Current local firmware | `0.1.0-alpha.44`, complete local image built and checked; original one-row home restored over the editable grid and verified Alpha42 audio fixes |
-| Development handheld | Alpha44 running in slot A; kernel, DTB and complete immutable root matched the checked local image; gamepad registered and restored one-row bubble/footer captured from the real scanout |
+| Current local firmware | `0.1.0-alpha.45`, complete local image built and checked; borderless multi-row grid, accent focus and themed edit controls over the original one-row view and verified audio fixes |
+| Development handheld | Alpha45 running in slot B; kernel, DTB and complete immutable root matched the checked local image; gamepad registered, actual edit/normal grid scanouts checked and exact saved layout restored |
 | Slopetanium | Public `v0.3.2-beta`; writable app independently updated from CI and all 34 packaged files verified; next nightly seed pin updated in `sources.json` |
 | GBA DS Duo | Fork PR [#1](https://github.com/rzrbld/gba-ds/pull/1) merged; [v1.6.1.1](https://github.com/rzrbld/gba-ds/releases/tag/v1.6.1.1) published by CI and installed through Slopetanium; all 23 payload files matched the release ZIP |
 
@@ -20,6 +20,17 @@ repository. Paths and private device connection details belong to the workspace,
 not public deployment configuration.
 
 ## Recent verified findings
+
+- Alpha45 removes the multi-row frame and page counter, reuses the themed
+  horizontal rail for touch page navigation, enlarges the selected grid icon by
+  10% with a bold system-accent outline, and uses normal themed face buttons for
+  editing. The one-row bubble/carousel remains. Source and image checks passed;
+  real-icon tests verify blue/red selection in dark/light themes, page scrubbing,
+  edit-only zoom, normal footer actions and retained ordering/collection links.
+  Complete Alpha45 was A/B-installed and its active kernel, DTB and full root
+  matched the built image. A brief installed input-event test captured three-row
+  edit and normal scanouts, then restored the original row count and exact
+  writable layout bytes. Actual 1280×960 scanouts show the requested styling.
 
 - Alpha44 incorporates the user's correction to the home UI: the original
   bubble/carousel remains in one row, compact grids remain at two to four rows,
