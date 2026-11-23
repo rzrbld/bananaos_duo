@@ -30,3 +30,19 @@ References: [Qualcomm downstream TX macro](https://github.com/LineageOS/android_
 Installed Alpha31 validation: three consecutive two-second capture / one-second silent-playback cycles completed without errors or stalls. The user confirmed headset audio, speaker audio after unplugging, and headset audio after reconnecting. The existing quiet fan policy was retained (PWM 32, approximately 4,500 RPM).
 
 Alpha32 tests a driver-level headphone PA ordering change, adapted from [Jonathan Marek's WCD938x fix](https://lkml.iu.edu/hypermail/linux/kernel/2511.3/00064.html). It moves headphone amplifier enable/disable into the playback mute callback, inside the active SoundWire stream, and enables the amplifier after its supply settle delay. Capture callbacks leave playback untouched; repeated mute calls do not unbalance IRQ enables. An instrumented test executes the actual driver helpers to check those invariants. After installing the complete Alpha32 firmware, the user confirmed that the headphone popping was gone. The installed codec module hash matched the tested build.
+
+## SDL game shutdown
+
+Alpha40 also addresses an independent userspace shutdown failure. A live GBA DS
+trace showed `SDL_CloseAudioDevice` joining its playback thread while that thread
+was blocked inside ALSA playback/poll. SDL's nonblocking ALSA path keeps writes
+interruptible when the audio thread is disabled. Its availability wait now also
+recovers startup underruns, as the write path already does, instead of marking
+the audio device permanently disconnected.
+
+Temporary hardware testing with the library from the complete Alpha40 candidate
+recovered a startup underrun, ran a game at about 59 FPS and exited normally.
+That test restored the launcher and original library mount. It does not establish
+a new user confirmation of audible output, jack hotplug or microphone behavior;
+those remain separate regression checks. The kernel headphone PA ordering and
+microphone routing are unchanged by this SDL patch.

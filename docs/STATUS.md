@@ -21,7 +21,7 @@ Alpha firmware for **Retroid Pocket Duo Lite (SM6125 / Adreno 610)**. Tested on 
 
 Alpha36 makes the active panel's geometry available through the shared rendering backend. Centred text and full-panel backgrounds use that geometry rather than an assumed 640×480 canvas. Audited paths include update installation/results, language confirmation, welcome cards, notifications, calibration, EQ, settings and the built-in Files/Search pages. The Carts theme uses panel-sized backgrounds and columns; JSON themes receive `W` and evaluate width-dependent variables separately for each panel. Literal coordinates in third-party themes still belong to their authors.
 
-The real-page regression renders equal and unequal panels at 480-, 768- and 960-line scales, checks all five installation states and welcome centring, compares the lower installation screen byte-for-byte, and checks calibration coverage and per-panel theme variables. CI renders the additional settings/setup pages into an artifact for visual review. These checks gate the firmware release build. The installed launcher is updated only through a complete CI firmware release.
+The real-page regression renders equal and unequal panels at 480-, 768- and 960-line scales, checks all five installation states and welcome centring, compares the lower installation screen byte-for-byte, and checks calibration coverage and per-panel theme variables. CI renders the additional settings/setup pages into an artifact for visual review. These checks gate the firmware release build. The installed launcher is updated through a complete verified firmware build; local development builds are allowed, while public releases are built and published by CI.
 
 ## Emulators
 

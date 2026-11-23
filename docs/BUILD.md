@@ -1,5 +1,8 @@
 # Building and releases
 
+See [DEVELOPMENT.md](DEVELOPMENT.md) for commit policy and
+[ARCHITECTURE.md](ARCHITECTURE.md) for the repository/component map.
+
 Use Linux with Git, Python 3.12 or newer, Make, a C/C++ compiler and Docker. A full cold build downloads a toolchain and large emulator sources; allow several hours and approximately 50 GB or more of free disk space. `JOBS=4` is the default; set it for the available CPU/RAM.
 
 ```sh

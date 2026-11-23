@@ -43,6 +43,10 @@ The original BananaOS in-game menu provides save/load, resume, brightness, resta
 
 ## Build and contribute
 
+Start with the [project documentation index](docs/README.md) and
+[AGENTS.md](AGENTS.md). They record source ownership, scope, commit/release rules,
+device-testing practice and the current development handoff.
+
 ```sh
 git clone --recurse-submodules https://github.com/rzrbld/bananaos_duo.git
 cd bananaos_duo
