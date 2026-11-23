@@ -1,5 +1,10 @@
 # Changes
 
+## 0.1.0-alpha.40
+
+- Kept SDL ALSA playback interruptible so closing a game cannot wait forever in a blocked audio write.
+- Included Slopetanium v0.3.1-beta with correct routing of legacy PortMaster archives.
+
 ## 0.1.0-alpha.39
 
 - Fixed Slopetanium startup on exFAT cards without data-partition symlinks.

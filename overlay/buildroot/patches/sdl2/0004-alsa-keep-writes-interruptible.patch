@@ -1,0 +1,15 @@
+From: Codex <noreply@openai.com>
+Subject: [PATCH] audio: keep ALSA playback nonblocking during shutdown
+
+SDL_CloseAudioDevice joins the playback thread after clearing enabled. A
+blocking snd_pcm_writei can wait forever on the handheld's ALSA shared PCM
+and never observe that flag. Use SDL's existing nonblocking playback path,
+which waits for space and retries writes while checking enabled.
+
+--- a/src/audio/alsa/SDL_alsa_audio.c
++++ b/src/audio/alsa/SDL_alsa_audio.c
+@@ -25,3 +25,3 @@
+ #ifndef SDL_ALSA_NON_BLOCKING
+-#define SDL_ALSA_NON_BLOCKING 0
++#define SDL_ALSA_NON_BLOCKING 1
+ #endif
