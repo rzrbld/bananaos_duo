@@ -23,11 +23,13 @@ If a source archive exceeds the release asset limit, it is split into numbered `
 
 The **Checks** workflow runs on main pushes and pull requests: source reconstruction, real updater tests against file-backed slots, the upstream A/B regression tests, hardware-policy tests, launcher compilation and panel tests.
 
-The **Firmware** workflow builds complete images on `v*` tags or manual dispatch. Manual builds retain downloadable Actions artifacts. A matching version tag additionally publishes a GitHub release after build, image verification, tests, source collection and checksum verification succeed. Alpha tags produce prereleases. Assets upload to a draft first; publishing the draft makes the complete release discoverable by the handheld.
+The **Firmware** workflow runs nightly at **00:00 UTC / 03:00 Moscow**, or through **Run workflow**. Pushing commits or version tags does not start a full firmware build. Quick **Checks** still run on main pushes and pull requests.
 
-Tag builds publish directly from the verified build job to GitHub Releases. Manual-build Actions artifacts are retained for one day. Source packaging also collects the pinned GCC runtime and glibc sources from Bootlin, alongside its SDK configuration and the Buildroot license manifests.
+Nightly builds use `main` and retain the complete image, update package, checksums and corresponding sources as the `duolite-firmware` Actions artifact for one day. These are test builds: they do not change the handheld's public release feed. Local builds may be installed on a development handheld; the nightly image can be tested independently on another card.
 
-The first hardware-tested release can be published from an identical local source tree and verified build. An existing published release is retained when its tag's workflow finishes; CI never replaces those assets.
+After validating a version, manually run **Firmware** with its matching `v*` tag selected to publish the release. The tag must match `VERSION` and the board's `RELEASE`. That run performs the same build, image checks, tests, source collection and checksum verification, uploads assets to a draft, and only then publishes the complete release. Alpha tags produce prereleases. Existing releases retain their verified assets; a rebuild never replaces them.
+
+Source packaging collects the pinned GCC runtime and glibc sources from Bootlin, alongside its SDK configuration and the Buildroot license manifests.
 
 ## Updating upstream
 
