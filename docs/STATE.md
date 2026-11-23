@@ -9,10 +9,10 @@ Stable project rules live in [AGENTS.md](../AGENTS.md), not in this snapshot.
 | Item | Verified state |
 | --- | --- |
 | Public firmware release | `v0.1.0-alpha.35`; later local development versions are not public OTA releases yet |
-| Firmware source/candidate | `0.1.0-alpha.40`, complete local image built and checked; SDL audio shutdown fix plus startup-underrun recovery |
-| Development handheld | Alpha39 was verified before this session's work; Alpha40 installation/verification is in progress and must be confirmed before declaring it installed |
+| Current local firmware | `0.1.0-alpha.40`, complete local image built and checked; SDL audio shutdown fix plus startup-underrun recovery |
+| Development handheld | Alpha40 running in slot A; kernel, DTB and complete immutable root matched the checked local image; gamepad registered and launcher recovered |
 | Slopetanium | Public `v0.3.1-beta`; firmware seed pin in `sources.json`; writable app was independently updated and tested on exFAT |
-| GBA DS Duo | Fork PR [#1](https://github.com/rzrbld/gba-ds/pull/1) merged; `v1.6.1.1` tagged; CI release publication in progress |
+| GBA DS Duo | Fork PR [#1](https://github.com/rzrbld/gba-ds/pull/1) merged; [v1.6.1.1](https://github.com/rzrbld/gba-ds/releases/tag/v1.6.1.1) published by CI and installed through Slopetanium; all 23 payload files matched the release ZIP |
 
 The maintained local firmware checkout is `port/` inside the bring-up workspace.
 The GBA DS fork checkout is `work/gba-ds-duo/`; Slopetanium is a separate sibling
@@ -35,17 +35,19 @@ not public deployment configuration.
   pixel/pointer tests pass at all four right angles. The real device produced a
   1920×1080 logical top screenshot and generated its library logos without SIGILL.
 - Real gameplay exposed an OS SDL audio-thread hang in blocking ALSA playback
-  when closing a game. The Alpha40 candidate uses the existing nonblocking path
+  when closing a game. Alpha40 uses the existing nonblocking path
   and recovers startup underruns. Temporary testing with its built library ran
   about 59 FPS, recovered an underrun and exited normally; the launcher restored.
   This is software evidence, not a new user confirmation of audible output.
 - Fork installer testing creates `GBA DS Duo.sh` without replacing the existing
   upstream `GBA DS.sh` tile or package. GBA DS remains a separately updated app.
+  The CI-built v1.6.1.1 installation matched all 23 packaged files; the upstream
+  executable hash was unchanged. Its installed-release gameplay/exit smoke test
+  on Alpha40 passed (about 57 FPS in the measured interval), with temporary saves
+  and automatic launcher restoration. The store core exited after installation.
 
 ## Outstanding checks and boundaries
 
-- Complete/verify Alpha40 installation and the CI-built GBA DS release. Update
-  this snapshot with the actual final states; do not infer them from queued jobs.
 - Recheck audible output and physical panel orientation with the user when they
   return if those results have not been observed directly.
 - Bluetooth pairing needs broader device testing. 3DS still combines screens on
@@ -54,6 +56,10 @@ not public deployment configuration.
 - Headphone popping was user-confirmed fixed after Alpha32. Preserve that codec
   PA ordering and the working headset/built-in microphone routes.
 - Keep the quiet fan ceiling and emergency policy; rumble is optional.
+
+Alpha40 component verification is recorded in the local installed-image manifest.
+The fan tachometer read about 4,570 RPM after reboot; its quiet policy is retained.
+Public firmware remains Alpha35 until a separate CI release is published.
 
 Private local evidence for this work is under `work/duolite/gba-ds-diagnosis/`
 and `work/duolite/local40/`. Earlier verified image manifests and exFAT tests are
