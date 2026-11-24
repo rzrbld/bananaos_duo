@@ -9,8 +9,9 @@ Stable project rules live in [AGENTS.md](../AGENTS.md), not in this snapshot.
 | Item | Verified state |
 | --- | --- |
 | Public firmware release | `v0.1.0-alpha.35`; later local development versions are not public OTA releases yet |
-| Current local firmware | `0.1.0-alpha.56`; corrected battery/status artwork and seven console icons over the verified Alpha55 base; experimental Venus remains separate |
-| Development handheld | Recovered to Alpha56 in slot B, now also the persistent default. Active kernel, DTB and complete root reverified against the original Alpha56 image. Failed experimental Alpha57 remains in slot A; do not select it |
+| Current local firmware | `0.1.0-alpha.60`; native X11/GLX support, standard DMA heaps and connected-network background scans off by default; experimental Venus remains disabled |
+| Development handheld | Alpha60 running/default in slot B; active kernel, DTB and complete root hashes verified. Verified Alpha59 remains in slot A for recovery; original Alpha46 DTB retained |
+| Steam Link Duo | LOCAL `0.1.0-alpha.3`, installed as a writable home-menu app; real Steam Deck video/audio/controls confirmed, video latency remains under investigation; no public app repository/release |
 | Slopetanium | Public `v0.3.2-beta`; writable app independently updated from CI and all 34 packaged files verified; next nightly seed pin updated in `sources.json` |
 | GBA DS Duo | Fork PR [#1](https://github.com/rzrbld/gba-ds/pull/1) merged; [v1.6.1.1](https://github.com/rzrbld/gba-ds/releases/tag/v1.6.1.1) published by CI and installed through Slopetanium; all 23 payload files matched the release ZIP |
 
@@ -21,33 +22,45 @@ not public deployment configuration.
 
 ## Recent verified findings
 
-- Steam Link's physical A button acts as Xbox B/Back with the positional mapping;
-  the user distinguished that normal exit from the streaming crash. The native
-  Raspberry Pi Wayland player opens Pi DMA heaps absent from this kernel, then
-  dereferences null during cleanup (observed code trace 0x2d53e0 / 0x2d5cb8).
-  Supported no-hardware/GLES options did not bypass it. X11 avoided the fatal
-  crash but returned to the client menu because GLX is unavailable.
-- A GLX/glamor-capable ARM64 Xwayland build completed in the LOCAL Steam Link
-  integration. Native Mesa X11 GLX/Turnip WSI support was compiled at the same
-  pinned driver version. Complete Alpha57 image/source checks and 44-ELF native
-  dependency closure passed, but its first hardware boot showed black screen and
-  no SSH reconnection. This is a FAILED candidate, not a usable firmware or a
-  proven streaming fix. The user booted Alpha56 in slot B; the OS updater switched the persistent default to B. All active component hashes were reverified against the original Alpha56 image.
-  Commit dbbca8b restores the verified Alpha56 default and version for nightly
-  builds. The optional desktop graphics recipe remains disabled for investigation.
+- Alpha60 was installed through the normal inactive-slot updater. The active
+  kernel, device tree and complete SquashFS bytes match its local image; the
+  top-bar build label now also matches source metadata. Kernel/DTB are unchanged
+  from verified Alpha59. Background better-AP scans are off by default, with a
+  writable opt-in documented in [WIFI.md](WIFI.md). The user's policy file is off.
+  A live control-socket observation saw no automatic scans for 35 seconds, then
+  verified an explicit manual scan started and completed. Initial connection and
+  disconnected-network discovery remain enabled; no BSSID pin was added.
+- The earlier Alpha57 black screen was a LOCAL PACKAGING ERROR: extracted host
+  ownership made setuid BusyBox switch to UID 1000 before privileged startup.
+  SDK fakeroot packaging preserves root and service owners. A real SquashFS
+  regression accepts root ownership and rejects the broken host-owned case;
+  complete image checks now enforce privileged startup/setuid ownership.
+- Steam Link's unmodified ARM64 Raspberry Pi client needs a DMA buffer heap
+  even with software decoding. Both X11 and Wayland crashed in allocator cleanup
+  while the heap was absent. Alpha59 enabled standard core/system/CMA heap
+  drivers on the stable kernel, preserving the existing 32 MiB pool and DTB.
+  `/dev/dma_heap/reserved` passed a 4 MiB allocation/mmap/cache-sync/read/write
+  test. Native Xwayland OpenGL rendering separately reported FD610.
+- Steam Link is a separate LOCAL project at `work/steamlink-duo`, kept private
+  at the user's explicit request. Valve client bytes and pairing were preserved;
+  the app ZIP excludes client downloads and profiles. The menu uses app-owned
+  Xwayland; Alpha3 video uses native Wayland and OS DMA heaps/graphics drivers.
+  Decoding remains software. X11 video worked briefly but hit a native pollqueue
+  assertion after about 80 seconds; the Wayland test ran for six minutes without
+  that assertion. The user confirmed real Steam Deck video/audio and responsive
+  controls, but video delay remains greater than their Xbox stream. Face buttons
+  follow Xbox positions, so labelled A is Back and labelled B confirms.
+- The user observed a red network warning with small movements despite both
+  endpoints using the same access point. Reported Duo signal was -76 to -82 dBm;
+  raw wired-PC receive tests averaged 103/130 Mbit/s but varied considerably.
+  Wired-PC ping samples had 2–240 ms latency. Disabling power saving alone did
+  not visibly solve it and the original setting was restored. Background scans
+  were disabled at the user's request; do not claim video latency is resolved.
 
 - CI run 45392642107 exposed an incorrect relative path in the new battery
   regression invocation; commit 76fbe55 corrects it, and the exact command passed
   locally. Replacement manual run [45394058477](https://github.com/rzrbld/bananaos_duo/actions/runs/45394058477)
   has passed checks; the full build was still in progress at this review.
-- Direct Steam Remote Play integration is a separate LOCAL project under
-  `work/steamlink-duo`. The user explicitly declined publication for now; no
-  new public repository was created. Valve's unmodified ARM64 client starts,
-  registers the controller and connects to Steam's Remote Client service using
-  app-owned Xwayland/Weston and native OS graphics. Pairing, physical controls,
-  orientation and actual streaming remain unverified. App/client/pairing storage
-  is writable; Valve downloads and profiles are excluded from Git and app ZIPs.
-
 - Alpha56 work: firmware CI run 45316271038 compiled and passed image/source
   checks, then failed at `legal-info` because tests had generated Python bytecode
   inside authored overlay directories, changing prepare's fingerprint. Preparation
@@ -246,17 +259,14 @@ not public deployment configuration.
   on Alpha40 passed (about 57 FPS in the measured interval), with temporary saves
   and automatic launcher restoration. The store core exited after installation.
 
-## Next session: user requests (2026-11-24)
+## Current user requests (2026-11-24)
 
-- Battery indicator: Slopetanium showed about 69% after roughly three hours of
-  testing/streaming while the OS launcher still appeared almost full. Compare
-  their actual capacity sources and icon scaling before changing calibration.
-- Redraw icons for the newly added consoles in the existing system style.
-  Either use image generation or provide exact asset dimensions, transparency,
-  formats and theme/style references so the user can generate them.
-- Add Steam PC game streaming as an independently installable Slopetanium app.
-  Evaluate a suitable ARM64 client; validate controller input, top touch, audio,
-  aspect ratio and latency without bundling user authentication into releases.
+- Battery artwork and seven console icons are fixed and user-confirmed.
+- Direct Steam Remote Play is functional in the local writable Steam Link app;
+  publication/Slopetanium listing is deliberately deferred at the user's request.
+- Continue video latency/network-warning diagnosis if requested. Automatic
+  better-AP background scans are now off; manual discovery still works. Keep
+  profiles private and distinguish network, decode and presentation timing.
 
 ## Outstanding checks and boundaries
 
@@ -273,9 +283,10 @@ Current local/installed versions are listed above. Public firmware remains
 Alpha35 until a separate tagged CI release is published. Main-branch firmware
 CI produces test artifacts; it does not publish a release automatically.
 
-Latest private firmware/roaming evidence is under `work/duolite/local55/`, with
-the preceding failed guard test under `work/duolite/local54/`. No device network
-logs or credentials are committed.
+Latest private firmware evidence is under `work/duolite/local60/`, with the
+verified DMA-heap bring-up under `work/duolite/local59/`. Steam runtime/radio
+evidence is under `work/steamlink-reference/`. Earlier roaming tests remain in
+`work/duolite/local55/`. No device logs, credentials or pairing are committed.
 
 Earlier private local evidence is under `work/duolite/gba-ds-diagnosis/`
 and `work/duolite/local40/`. Earlier verified image manifests and exFAT tests are
