@@ -9,7 +9,7 @@ Stable project rules live in [AGENTS.md](../AGENTS.md), not in this snapshot.
 | Item | Verified state |
 | --- | --- |
 | Public firmware release | `v0.1.0-alpha.35`; later local development versions are not public OTA releases yet |
-| Current local firmware | Alpha49 installed/hash-verified; Alpha52 kernel power-handoff correction building; acceleration remains experimental |
+| Current local firmware | Alpha46 fully restored/hash-verified; this branch preserves the failed Alpha52 Venus experiment |
 | Development handheld | Alpha45 running in slot B; kernel, DTB and complete immutable root matched the checked local image; gamepad registered, actual edit/normal grid scanouts checked and exact saved layout restored |
 | Slopetanium | Public `v0.3.2-beta`; writable app independently updated from CI and all 34 packaged files verified; next nightly seed pin updated in `sources.json` |
 | GBA DS Duo | Fork PR [#1](https://github.com/rzrbld/gba-ds/pull/1) merged; [v1.6.1.1](https://github.com/rzrbld/gba-ds/releases/tag/v1.6.1.1) published by CI and installed through Slopetanium; all 23 payload files matched the release ZIP |
@@ -65,13 +65,22 @@ not public deployment configuration.
   test and in a complete on-device VA-API hardware decode, which then exited
   normally. A subsequent early-stop/second-context test still rebooted.
 
-- Alpha52 is building a kernel correction: the added video clock driver used
-  `HW_CTRL`, while Venus's modern genpd handoff requires `HW_CTRL_TRIGGER`
-  (as used by SC7180). A once-per-boot diagnostic will confirm the generic
-  handoff path. Reset resolution is **not verified**. No more device decode
-  tests run on Alpha49 pending this correction. The experimental VA-API backend
-  is opt-in in the new source; MSM auto-selection aliases have been removed.
-  Public OTA is unchanged; do not advertise accelerated streaming as stable.
+- Alpha52 compiled and passed full image/source checks, then was A/B-installed
+  and hash-verified. Its first direct decode/early close completed and logged
+  `vcodec power handoff uses genpd hwmode`, confirming `HW_CTRL_TRIGGER` selected
+  the intended path. The second session after idle still rebooted the device.
+  The flag correction therefore did **not** establish stable resume/teardown.
+  Further hardware tests stopped, and the user requested return to Alpha46.
+  The original Alpha46 kernel, DTB and entire root were restored through normal
+  A/B updating and matched their historical hashes. Its device tree has no
+  experimental Venus node. Root and network settings/user data were preserved.
+
+- This work is isolated on `experimental/venus-sm6125`; main/nightly source
+  stays on Alpha46. Do not merge or publish it as a stable firmware. The VA-API
+  backend remains opt-in, with no MSM auto-selection aliases. Next investigation
+  must cover power resume beyond the verified genpd callback, and producer
+  synchronization for CPU-written exported video surfaces. Repeating the same
+  on-device renderer/decoder trials without a relevant fix only reproduces resets.
 
 - Greenlight fork commit `eb71ce1` adapts upstream resolution PR #1752 and
   defaults Duo to 720p, with separate 1080p/1440p/Auto and bitrate controls.

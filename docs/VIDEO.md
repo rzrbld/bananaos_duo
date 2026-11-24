@@ -72,3 +72,17 @@ did not install the genpd hardware-mode callback and forced legacy wrapper
 register handling. A successful handoff emits a single diagnostic. A reset fix
 must be verified with repeated start/stop/power-idle tests before any further
 streaming claim. Green/black streaming frames also require a physical retest.
+
+Alpha52 hardware result: the generic handoff diagnostic was observed and one
+direct decode/early close completed, but a second session after idle still
+rebooted. The user requested rollback; the original Alpha46 kernel, DTB and
+complete root were restored and hash-verified. The `HW_CTRL_TRIGGER` correction
+is not a verified reset fix. This branch is an experimental reference only.
+
+An additional adapter contract requires investigation: Chromium148 exports the
+VA DMA-BUF pool at allocation, then `SurfaceReady` relies on producer
+synchronization rather than resynchronizing every output. The adapter fills the
+exported surface through a later CPU copy and does not attach a producer fence.
+A baseline-only synchronous completion draft exists in private bring-up evidence;
+it has not been built or hardware-tested. Main/High profiles need correct
+asynchronous producer synchronization, not a blanket synchronous B-frame rule.
