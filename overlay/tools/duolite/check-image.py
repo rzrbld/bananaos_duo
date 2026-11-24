@@ -76,6 +76,9 @@ off = struct.unpack_from('<I',kernel,0x3c)[0]
 assert kernel[:2] == b'MZ' and kernel[off:off+4] == b'PE\0\0'
 assert struct.unpack_from('<H',kernel,off+4)[0] == 0xaa64
 dtb = (base/'sm6125-retroid-pocket-duo-lite.dtb').read_bytes()
+assert b'qcom,sm6125-venus' in dtb
+assert b'qcom,sm6125-videocc' in dtb
+assert b'qcom/sm6125/venus.mdt' in dtb
 assert b'banana,quiet-max-pwm' in dtb
 assert b'banana,emergency-cooling-state' in dtb
 assert b'VA DMIC2' in dtb and b'VA_MCLK' in dtb and b'MIC BIAS1' in dtb
@@ -101,6 +104,7 @@ assert b'portmaster-duolite-ui' not in command('unsquashfs', '-l', squash)
 def cat(name):
     return command('unsquashfs','-cat',squash,name)
 assert cat('etc/banana/board').strip() == b'duolite'
+assert cat('usr/libexec/banana/duolite-venus-firmware') == (source/'buildroot/board/duolite/rootfs/usr/libexec/banana/duolite-venus-firmware').read_bytes()
 import io, zipfile
 with zipfile.ZipFile(io.BytesIO(cat('usr/share/slopetanium/seed.zip'))) as seed:
     assert seed.read('slopetanium/slopetanium-ui.aarch64')[:4] == b'\x7fELF'

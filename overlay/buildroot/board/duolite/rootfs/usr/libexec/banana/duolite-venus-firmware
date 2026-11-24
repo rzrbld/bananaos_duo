@@ -1,0 +1,93 @@
+#!/usr/bin/python3
+"""Load this Duo's signed Venus 5.4 files into RAM; never write Android storage."""
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+import tempfile
+
+FILES = ('venus.mdt', 'venus.b00', 'venus.b01', 'venus.b02', 'venus.b03', 'venus.b04')
+
+
+def stage(source, destination):
+    """Validate the complete device-signed split image before publishing it."""
+    for name in FILES:
+        p = source / name
+        if not p.is_file() or p.is_symlink() or not 0 < p.stat().st_size <= 5 * 1024 * 1024:
+            raise RuntimeError('missing or invalid Venus segment: ' + name)
+    header = (source / 'venus.mdt').read_bytes()
+    if header[:5] != b'\x7fELF\x01':
+        raise RuntimeError('Venus metadata is not a 32-bit ELF image')
+    if b'QC_IMAGE_VERSION_STRING=VIDEO.VE.5.4-' not in (source / 'venus.b02').read_bytes():
+        raise RuntimeError('Android image is not Venus 5.4 firmware')
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temporary = Path(tempfile.mkdtemp(prefix='.venus-', dir=destination.parent))
+    try:
+        for name in FILES:
+            shutil.copyfile(source / name, temporary / name)
+            (temporary / name).chmod(0o644)
+        os.rename(temporary, destination)
+    finally:
+        if temporary.exists():
+            shutil.rmtree(temporary)
+
+
+def extract(partition, destination, mountpoint, run=subprocess.run):
+    """Both the block mapping and mount are read-only; always detach on failure."""
+    loop = run(['losetup', '-f'], check=True, capture_output=True, text=True).stdout.strip()
+    if not loop.startswith('/dev/loop') or not loop[9:].isdigit():
+        raise RuntimeError('invalid loop device')
+    attached = mounted = False
+    try:
+        run(['losetup', '-r', loop, str(partition)], check=True)
+        attached = True
+        run(['mount', '-t', 'vfat', '-o', 'ro,noatime', loop, str(mountpoint)], check=True)
+        mounted = True
+        stage(mountpoint / 'image', destination)
+    finally:
+        if mounted:
+            run(['umount', str(mountpoint)], check=True)
+        if attached:
+            run(['losetup', '-d', loop], check=True)
+
+
+def main():
+    compatible = Path('/sys/firmware/devicetree/base/compatible').read_bytes().split(b'\0')
+    if b'retroidpocket,duolite' not in compatible:
+        raise RuntimeError('not a Duo Lite')
+    runtime = Path('/run/banana/firmware')
+    parameter = Path('/sys/module/firmware_class/parameters/path')
+    current = parameter.read_text().strip()
+    if current and current != str(runtime):
+        raise RuntimeError('another firmware search path is already configured')
+    destination = runtime / 'qcom/sm6125'
+    if not destination.exists():
+        partitions = {}
+        for event in Path('/sys/class/block').glob('*/uevent'):
+            values = dict(line.split('=', 1) for line in event.read_text().splitlines() if '=' in line)
+            if values.get('PARTNAME') in ('modem_a', 'modem_b'):
+                partitions[values['PARTNAME']] = Path('/dev') / event.parent.name
+        mountpoint = Path('/run/banana/venus-reference')
+        mountpoint.mkdir(parents=True, exist_ok=True)
+        errors = []
+        for name in ('modem_a', 'modem_b'):
+            if name not in partitions:
+                continue
+            try:
+                extract(partitions[name], destination, mountpoint)
+                break
+            except (OSError, RuntimeError, subprocess.CalledProcessError) as error:
+                errors.append(str(error))
+        else:
+            raise RuntimeError('no usable Android Venus image: ' + '; '.join(errors))
+    parameter.write_text(str(runtime))
+    print('Venus: staged device-signed 5.4 firmware in RAM; Android unchanged')
+
+
+if __name__ == '__main__':
+    try:
+        main()
+    except (OSError, RuntimeError, subprocess.CalledProcessError) as error:
+        print('Venus firmware unavailable: ' + str(error), file=sys.stderr)
+        sys.exit(1)

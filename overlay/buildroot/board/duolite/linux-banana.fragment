@@ -20,3 +20,6 @@ CONFIG_FW_LOADER_USER_HELPER=y
 CONFIG_FW_LOADER_USER_HELPER_FALLBACK=y
 # Native SMB file sharing uses the same userspace tools as upstream BananaLinux.
 CONFIG_SMB_SERVER=m
+# SM6125 Venus 5.4 has its own video clock/power controller.
+CONFIG_SM_VIDEOCC_6125=m
+CONFIG_INTERCONNECT_QCOM_SM6125=m

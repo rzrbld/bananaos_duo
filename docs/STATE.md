@@ -9,7 +9,7 @@ Stable project rules live in [AGENTS.md](../AGENTS.md), not in this snapshot.
 | Item | Verified state |
 | --- | --- |
 | Public firmware release | `v0.1.0-alpha.35`; later local development versions are not public OTA releases yet |
-| Current local firmware | `0.1.0-alpha.45`, complete local image built and checked; borderless multi-row grid, accent focus and themed edit controls over the original one-row view and verified audio fixes |
+| Current local firmware | Alpha46 installed and hash-verified; Alpha47 Venus 5.4 integration is building and has not yet been hardware-validated |
 | Development handheld | Alpha45 running in slot B; kernel, DTB and complete immutable root matched the checked local image; gamepad registered, actual edit/normal grid scanouts checked and exact saved layout restored |
 | Slopetanium | Public `v0.3.2-beta`; writable app independently updated from CI and all 34 packaged files verified; next nightly seed pin updated in `sources.json` |
 | GBA DS Duo | Fork PR [#1](https://github.com/rzrbld/gba-ds/pull/1) merged; [v1.6.1.1](https://github.com/rzrbld/gba-ds/releases/tag/v1.6.1.1) published by CI and installed through Slopetanium; all 23 payload files matched the release ZIP |
@@ -36,13 +36,24 @@ not public deployment configuration.
   preserving the existing nonblocking writes, refill polling and prefill policy.
 
 - Greenlight is an independent app at `rzrbld/greenlight`, not firmware content.
-  CI published v2.4.2-duo.1; its actual ZIP passed checksum and Slopetanium
-  installation checks. The user installed it and confirmed gamepad and top
-  touch input. Streaming exposed a frozen physical image despite advancing
-  decode counters, increasing shared memory and a graphics-fence wait during
-  cleanup; one attempt also triggered the OOM killer. The app is a bring-up
-  preview and streaming is not yet working reliably. Diagnosis remains in the
-  app workspace; do not describe menu startup as full streaming compatibility.
+  CI published Duo.3, installed through Slopetanium and checked against all 598
+  packaged files. Its software-rendering fallback produces video/audio/input
+  but is choppy. Separate Electron42 + explicit ANGLE Turnip/Vulkan diagnostics
+  now show a moving real console stream, confirmed smoother by the user; this
+  configuration is not yet a published app release. Default ANGLE OpenGL tests
+  on Electron42 and 45 froze the physical image and could stall GPU cleanup.
+  Turnip test decoding remains software: the latest short sample measured
+  about 5.7 ms decode time, 5 ms network RTT and 0.2 ms jitter buffering.
+  Frame-arrival to browser-presentation estimates were about 32–33 ms; these
+  are not measurements of button-to-photon latency.
+
+- Alpha47 brings up the [Venus 5.4 VPU](VIDEO.md). Alpha46 had kernel modules
+  but no decoder DT node, firmware files or V4L2 devices, and therefore no Venus
+  probe attempt. The device-signed Android split firmware was extracted read-only
+  for private reference. Alpha47 stages that device's firmware into RAM at boot;
+  it does not redistribute the extracted files. Firmware validation and
+  read-only-access/cleanup tests pass. Hardware decoder and Electron integration
+  checks are pending; do not describe this as working hardware decoding yet.
 
 - Alpha45 removes the multi-row frame and page counter, reuses the themed
   horizontal rail for touch page navigation, enlarges the selected grid icon by

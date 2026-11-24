@@ -22,8 +22,11 @@ ln -sfn /proc/self/fd/2 /dev/stderr
 hostname banana
 syslogd -O /run/banana/messages -s 256 -b 1
 ip link set lo up
+# Stage only this device's signed Venus firmware before udev probes the VPU.
+# The helper reads Android's firmware partition through a read-only mapping.
+/usr/libexec/banana/duolite-venus-firmware || true
 mark 'starting udev'
-# All device firmware is on the mounted root. Missing optional ath10k cal/API
+# Other device firmware is on the mounted root. Missing optional ath10k cal/API
 # files must fail immediately so its next candidate can load, rather than
 # waiting 60s per file for a userspace firmware service we do not run.
 echo 1 > /proc/sys/kernel/firmware_config/ignore_sysfs_fallback

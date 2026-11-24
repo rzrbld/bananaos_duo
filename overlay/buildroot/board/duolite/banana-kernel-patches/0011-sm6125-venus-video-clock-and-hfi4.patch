@@ -1,0 +1,578 @@
+From: BananaOS Duo Lite maintainers
+Subject: [PATCH] clk/media/arm64: bring up the SM6125 Venus 5.4 decoder
+
+Adapt SM6125 video clock, HFI v4xx resources and SoC nodes from
+PeacockProject/linux_sm6125_ginkgo commit db3f159aa32c11688ee4873a6218ea113052fee6.
+Original clock implementation: Yunus Emre YOLDAS and The Linux Foundation;
+retain its copyright and GPL-2.0-only header. Device-tree nodes adapted to
+this kernel's 64-bit address/size cells. Board enablement remains separate.
+
+--- /dev/null
++++ b/drivers/clk/qcom/videocc-sm6125.c
+@@ -0,0 +1,329 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * Copyright (c) 2019, The Linux Foundation. All rights reserved.
++ * Copyright (c) 2026, Yunus Emre YOLDAŞ <admin@peacockos.org>
++ */
++
++#include <linux/clk-provider.h>
++#include <linux/module.h>
++#include <linux/platform_device.h>
++#include <linux/regmap.h>
++
++#include <dt-bindings/clock/qcom,sm6125-videocc.h>
++
++#include "clk-alpha-pll.h"
++#include "clk-branch.h"
++#include "clk-rcg.h"
++#include "clk-regmap.h"
++#include "common.h"
++#include "gdsc.h"
++
++enum {
++	P_BI_TCXO,
++	P_SLEEP_CLK,
++	P_VIDEO_PLL0_OUT_MAIN,
++};
++
++static const struct pll_vco video_cc_pll_vco[] = {
++	{ 500000000, 1000000000, 2 },
++};
++
++static struct clk_alpha_pll video_pll0 = {
++	.offset = 0x42c,
++	.vco_table = video_cc_pll_vco,
++	.num_vco = ARRAY_SIZE(video_cc_pll_vco),
++	.regs = clk_alpha_pll_regs[CLK_ALPHA_PLL_TYPE_DEFAULT],
++	.flags = SUPPORTS_DYNAMIC_UPDATE,
++	.clkr = {
++		.hw.init = &(struct clk_init_data){
++			.name = "video_pll0",
++			.parent_data = &(const struct clk_parent_data){
++				.fw_name = "bi_tcxo",
++			},
++			.num_parents = 1,
++			.ops = &clk_alpha_pll_ops,
++		},
++	},
++};
++
++/* 600MHz configuration */
++static const struct alpha_pll_config video_pll0_config = {
++	.l = 0x1f,
++	.alpha_hi = 0x40,
++	.alpha_en_mask = BIT(24),
++	.vco_val = 0x2 << 20,
++	.vco_mask = 0x3 << 20,
++	.main_output_mask = BIT(0),
++	.config_ctl_val = 0x4001055b,
++};
++
++static const struct parent_map video_cc_parent_map_0[] = {
++	{ P_SLEEP_CLK, 0 },
++};
++
++static const struct clk_parent_data video_cc_parent_data_0[] = {
++	{ .fw_name = "sleep_clk" },
++};
++
++static const struct parent_map video_cc_parent_map_1[] = {
++	{ P_BI_TCXO, 0 },
++	{ P_VIDEO_PLL0_OUT_MAIN, 1 },
++};
++
++static const struct clk_parent_data video_cc_parent_data_1[] = {
++	{ .fw_name = "bi_tcxo" },
++	{ .hw = &video_pll0.clkr.hw },
++};
++
++static const struct freq_tbl ftbl_video_cc_sleep_clk_src[] = {
++	F(32000, P_SLEEP_CLK, 1, 0, 0),
++	{ }
++};
++
++static struct clk_rcg2 video_cc_sleep_clk_src = {
++	.cmd_rcgr = 0xaf8,
++	.mnd_width = 0,
++	.hid_width = 5,
++	.parent_map = video_cc_parent_map_0,
++	.freq_tbl = ftbl_video_cc_sleep_clk_src,
++	.clkr.hw.init = &(struct clk_init_data){
++		.name = "video_cc_sleep_clk_src",
++		.parent_data = video_cc_parent_data_0,
++		.num_parents = ARRAY_SIZE(video_cc_parent_data_0),
++		.ops = &clk_rcg2_ops,
++	},
++};
++
++/*
++ * The last four entries all divide the PLL by two, so the rates above 300MHz
++ * are reached by re-rating video_pll0 rather than by the divider -- which is
++ * why this RCG propagates rate changes to its parent.
++ */
++static const struct freq_tbl ftbl_video_cc_venus_clk_src[] = {
++	F(19200000, P_BI_TCXO, 1, 0, 0),
++	F(133333333, P_VIDEO_PLL0_OUT_MAIN, 4.5, 0, 0),
++	F(240000000, P_VIDEO_PLL0_OUT_MAIN, 2.5, 0, 0),
++	F(300000000, P_VIDEO_PLL0_OUT_MAIN, 2, 0, 0),
++	F(380000000, P_VIDEO_PLL0_OUT_MAIN, 2, 0, 0),
++	F(410000000, P_VIDEO_PLL0_OUT_MAIN, 2, 0, 0),
++	F(460000000, P_VIDEO_PLL0_OUT_MAIN, 2, 0, 0),
++	{ }
++};
++
++static struct clk_rcg2 video_cc_venus_clk_src = {
++	.cmd_rcgr = 0x7f0,
++	.mnd_width = 0,
++	.hid_width = 5,
++	.parent_map = video_cc_parent_map_1,
++	.freq_tbl = ftbl_video_cc_venus_clk_src,
++	.clkr.hw.init = &(struct clk_init_data){
++		.name = "video_cc_venus_clk_src",
++		.parent_data = video_cc_parent_data_1,
++		.num_parents = ARRAY_SIZE(video_cc_parent_data_1),
++		.flags = CLK_SET_RATE_PARENT,
++		.ops = &clk_rcg2_ops,
++	},
++};
++
++static struct clk_branch video_cc_apb_clk = {
++	.halt_reg = 0x990,
++	.halt_check = BRANCH_HALT,
++	.clkr = {
++		.enable_reg = 0x990,
++		.enable_mask = BIT(0),
++		.hw.init = &(struct clk_init_data){
++			.name = "video_cc_apb_clk",
++			.ops = &clk_branch2_ops,
++		},
++	},
++};
++
++static struct clk_branch video_cc_sleep_clk = {
++	.halt_reg = 0xb18,
++	.halt_check = BRANCH_HALT,
++	.clkr = {
++		.enable_reg = 0xb18,
++		.enable_mask = BIT(0),
++		.hw.init = &(struct clk_init_data){
++			.name = "video_cc_sleep_clk",
++			.parent_hws = (const struct clk_hw*[]){
++				&video_cc_sleep_clk_src.clkr.hw,
++			},
++			.num_parents = 1,
++			.flags = CLK_SET_RATE_PARENT,
++			.ops = &clk_branch2_ops,
++		},
++	},
++};
++
++static struct clk_branch video_cc_vcodec0_axi_clk = {
++	.halt_reg = 0x8f0,
++	.halt_check = BRANCH_HALT,
++	.clkr = {
++		.enable_reg = 0x8f0,
++		.enable_mask = BIT(0),
++		.hw.init = &(struct clk_init_data){
++			.name = "video_cc_vcodec0_axi_clk",
++			.ops = &clk_branch2_ops,
++		},
++	},
++};
++
++static struct clk_branch video_cc_vcodec0_core_clk = {
++	.halt_reg = 0x890,
++	.halt_check = BRANCH_HALT_VOTED,
++	.clkr = {
++		.enable_reg = 0x890,
++		.enable_mask = BIT(0),
++		.hw.init = &(struct clk_init_data){
++			.name = "video_cc_vcodec0_core_clk",
++			.parent_hws = (const struct clk_hw*[]){
++				&video_cc_venus_clk_src.clkr.hw,
++			},
++			.num_parents = 1,
++			.flags = CLK_SET_RATE_PARENT,
++			.ops = &clk_branch2_ops,
++		},
++	},
++};
++
++static struct clk_branch video_cc_venus_ahb_clk = {
++	.halt_reg = 0x9b0,
++	.halt_check = BRANCH_HALT,
++	.clkr = {
++		.enable_reg = 0x9b0,
++		.enable_mask = BIT(0),
++		.hw.init = &(struct clk_init_data){
++			.name = "video_cc_venus_ahb_clk",
++			.ops = &clk_branch2_ops,
++		},
++	},
++};
++
++static struct clk_branch video_cc_venus_ctl_axi_clk = {
++	.halt_reg = 0x8d0,
++	.halt_check = BRANCH_HALT,
++	.clkr = {
++		.enable_reg = 0x8d0,
++		.enable_mask = BIT(0),
++		.hw.init = &(struct clk_init_data){
++			.name = "video_cc_venus_ctl_axi_clk",
++			.ops = &clk_branch2_ops,
++		},
++	},
++};
++
++static struct clk_branch video_cc_venus_ctl_core_clk = {
++	.halt_reg = 0x850,
++	.halt_check = BRANCH_HALT,
++	.clkr = {
++		.enable_reg = 0x850,
++		.enable_mask = BIT(0),
++		.hw.init = &(struct clk_init_data){
++			.name = "video_cc_venus_ctl_core_clk",
++			.parent_hws = (const struct clk_hw*[]){
++				&video_cc_venus_clk_src.clkr.hw,
++			},
++			.num_parents = 1,
++			.flags = CLK_SET_RATE_PARENT,
++			.ops = &clk_branch2_ops,
++		},
++	},
++};
++
++static struct clk_branch video_cc_xo_clk = {
++	.halt_reg = 0xab8,
++	.halt_check = BRANCH_HALT,
++	.clkr = {
++		.enable_reg = 0xab8,
++		.enable_mask = BIT(0),
++		.hw.init = &(struct clk_init_data){
++			.name = "video_cc_xo_clk",
++			.ops = &clk_branch2_ops,
++		},
++	},
++};
++
++static struct gdsc venus_gdsc = {
++	.gdscr = 0x814,
++	.pd = {
++		.name = "venus_gdsc",
++	},
++	.pwrsts = PWRSTS_OFF_ON,
++};
++
++static struct gdsc vcodec0_gdsc = {
++	.gdscr = 0x874,
++	.pd = {
++		.name = "vcodec0_gdsc",
++	},
++	.flags = HW_CTRL,
++	.pwrsts = PWRSTS_OFF_ON,
++};
++
++static struct clk_regmap *video_cc_sm6125_clocks[] = {
++	[VIDEO_CC_APB_CLK] = &video_cc_apb_clk.clkr,
++	[VIDEO_CC_SLEEP_CLK] = &video_cc_sleep_clk.clkr,
++	[VIDEO_CC_SLEEP_CLK_SRC] = &video_cc_sleep_clk_src.clkr,
++	[VIDEO_CC_VCODEC0_AXI_CLK] = &video_cc_vcodec0_axi_clk.clkr,
++	[VIDEO_CC_VCODEC0_CORE_CLK] = &video_cc_vcodec0_core_clk.clkr,
++	[VIDEO_CC_VENUS_AHB_CLK] = &video_cc_venus_ahb_clk.clkr,
++	[VIDEO_CC_VENUS_CLK_SRC] = &video_cc_venus_clk_src.clkr,
++	[VIDEO_CC_VENUS_CTL_AXI_CLK] = &video_cc_venus_ctl_axi_clk.clkr,
++	[VIDEO_CC_VENUS_CTL_CORE_CLK] = &video_cc_venus_ctl_core_clk.clkr,
++	[VIDEO_CC_XO_CLK] = &video_cc_xo_clk.clkr,
++	[VIDEO_PLL0] = &video_pll0.clkr,
++};
++
++static struct gdsc *video_cc_sm6125_gdscs[] = {
++	[VENUS_GDSC] = &venus_gdsc,
++	[VCODEC0_GDSC] = &vcodec0_gdsc,
++};
++
++static const struct regmap_config video_cc_sm6125_regmap_config = {
++	.reg_bits = 32,
++	.reg_stride = 4,
++	.val_bits = 32,
++	.max_register = 0xb94,
++	.fast_io = true,
++};
++
++static const struct qcom_cc_desc video_cc_sm6125_desc = {
++	.config = &video_cc_sm6125_regmap_config,
++	.clks = video_cc_sm6125_clocks,
++	.num_clks = ARRAY_SIZE(video_cc_sm6125_clocks),
++	.gdscs = video_cc_sm6125_gdscs,
++	.num_gdscs = ARRAY_SIZE(video_cc_sm6125_gdscs),
++};
++
++static const struct of_device_id video_cc_sm6125_match_table[] = {
++	{ .compatible = "qcom,sm6125-videocc" },
++	{ }
++};
++MODULE_DEVICE_TABLE(of, video_cc_sm6125_match_table);
++
++static int video_cc_sm6125_probe(struct platform_device *pdev)
++{
++	struct regmap *regmap;
++
++	regmap = qcom_cc_map(pdev, &video_cc_sm6125_desc);
++	if (IS_ERR(regmap))
++		return PTR_ERR(regmap);
++
++	clk_alpha_pll_configure(&video_pll0, regmap, &video_pll0_config);
++
++	return qcom_cc_really_probe(&pdev->dev, &video_cc_sm6125_desc, regmap);
++}
++
++static struct platform_driver video_cc_sm6125_driver = {
++	.probe = video_cc_sm6125_probe,
++	.driver = {
++		.name = "video_cc-sm6125",
++		.of_match_table = video_cc_sm6125_match_table,
++	},
++};
++
++module_platform_driver(video_cc_sm6125_driver);
++
++MODULE_DESCRIPTION("QTI VIDEO_CC SM6125 Driver");
++MODULE_LICENSE("GPL");
+--- /dev/null
++++ b/include/dt-bindings/clock/qcom,sm6125-videocc.h
+@@ -0,0 +1,29 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++/*
++ * Copyright (c) 2019, The Linux Foundation. All rights reserved.
++ *
++ * Clock ids for the SM6125 (trinket) video clock controller, matching the
++ * clock names in Qualcomm's downstream videocc-trinket driver.
++ */
++
++#ifndef _DT_BINDINGS_CLK_QCOM_VIDEO_CC_SM6125_H
++#define _DT_BINDINGS_CLK_QCOM_VIDEO_CC_SM6125_H
++
++/* VIDEO_CC clocks */
++#define VIDEO_PLL0				0
++#define VIDEO_CC_APB_CLK			1
++#define VIDEO_CC_SLEEP_CLK			2
++#define VIDEO_CC_SLEEP_CLK_SRC			3
++#define VIDEO_CC_VCODEC0_AXI_CLK		4
++#define VIDEO_CC_VCODEC0_CORE_CLK		5
++#define VIDEO_CC_VENUS_AHB_CLK			6
++#define VIDEO_CC_VENUS_CLK_SRC			7
++#define VIDEO_CC_VENUS_CTL_AXI_CLK		8
++#define VIDEO_CC_VENUS_CTL_CORE_CLK		9
++#define VIDEO_CC_XO_CLK				10
++
++/* VIDEO_CC GDSCRs */
++#define VENUS_GDSC				0
++#define VCODEC0_GDSC				1
++
++#endif
+--- a/drivers/clk/qcom/Kconfig
++++ b/drivers/clk/qcom/Kconfig
+@@ -1911,6 +1911,17 @@
+ 	  Say Y if you want to support video devices and functionality such as
+ 	  video encode/decode.
+ 
++config SM_VIDEOCC_6125
++	tristate "SM6125 Video Clock Controller"
++	depends on ARM64 || COMPILE_TEST
++	depends on SM_GCC_6125
++	select QCOM_GDSC
++	help
++	  Support for the video clock controller on Qualcomm Technologies, Inc
++	  SM6125 devices.
++	  Say Y if you want to support video devices and functionality such as
++	  video encode/decode.
++
+ config SM_VIDEOCC_6350
+ 	tristate "SM6350 Video Clock Controller"
+ 	depends on ARM64 || COMPILE_TEST
+--- a/drivers/clk/qcom/Makefile
++++ b/drivers/clk/qcom/Makefile
+@@ -208,6 +208,7 @@
+ obj-$(CONFIG_SM_TCSRCC_8550) += tcsrcc-sm8550.o
+ obj-$(CONFIG_SM_TCSRCC_8650) += tcsrcc-sm8650.o
+ obj-$(CONFIG_SM_TCSRCC_8750) += tcsrcc-sm8750.o
++obj-$(CONFIG_SM_VIDEOCC_6125) += videocc-sm6125.o
+ obj-$(CONFIG_SM_VIDEOCC_6350) += videocc-sm6350.o
+ obj-$(CONFIG_SM_VIDEOCC_7150) += videocc-sm7150.o
+ obj-$(CONFIG_SM_VIDEOCC_8150) += videocc-sm8150.o
+--- a/drivers/media/platform/qcom/venus/core.c
++++ b/drivers/media/platform/qcom/venus/core.c
+@@ -1054,6 +1054,62 @@
+ 	.dec_nodename = "video-decoder",
+ 	.enc_nodename = "video-encoder",
+ };
++
++/*
++ * SM6125 is the same AR50 generation as sc7180 with a single vcodec core, so
++ * the tables below are sc7180's shape with this part's own numbers: the rates
++ * are downstream's qcom,allowed-clock-rates, which top out at 460MHz, and the
++ * bandwidth figures are scaled to match. It has no 4K decode.
++ */
++static const struct freq_tbl sm6125_freq_table[] = {
++	{  0, 460000000 },
++	{  0, 380000000 },
++	{  0, 300000000 },
++	{  0, 240000000 },
++	{  0, 133333333 },
++};
++
++static const struct bw_tbl sm6125_bw_table_enc[] = {
++	{  489600,  451000, 0, 0, 0 },	/* 1920x1080@60 */
++	{  244800,  234000, 0, 0, 0 },	/* 1920x1080@30 */
++};
++
++static const struct bw_tbl sm6125_bw_table_dec[] = {
++	{  489600,  865000, 0, 1146000, 0 },	/* 1920x1080@60 */
++	{  244800,  530000, 0,  583000, 0 },	/* 1920x1080@30 */
++};
++
++static const struct venus_resources sm6125_res = {
++	.freq_tbl = sm6125_freq_table,
++	.freq_tbl_size = ARRAY_SIZE(sm6125_freq_table),
++	.bw_tbl_enc = sm6125_bw_table_enc,
++	.bw_tbl_enc_size = ARRAY_SIZE(sm6125_bw_table_enc),
++	.bw_tbl_dec = sm6125_bw_table_dec,
++	.bw_tbl_dec_size = ARRAY_SIZE(sm6125_bw_table_dec),
++	.clks = {"core", "iface", "bus" },
++	.clks_num = 3,
++	.vcodec0_clks = { "vcodec0_core", "vcodec0_bus" },
++	.vcodec_clks_num = 2,
++	.vcodec_pmdomains = (const char *[]) { "venus", "vcodec0" },
++	.vcodec_pmdomains_num = 2,
++	.opp_pmdomain = (const char *[]) { "cx" },
++	.opp_pmdomain_num = 1,
++	.vcodec_num = 1,
++	.hfi_version = HFI_VERSION_4XX,
++	.vpu_version = VPU_VERSION_AR50,
++	.vmem_id = VIDC_RESOURCE_NONE,
++	.vmem_size = 0,
++	.vmem_addr = 0,
++	.dma_mask = 0xe0000000 - 1,
++	.cp_start = 0,
++	.cp_size = 0x70800000,
++	.cp_nonpixel_start = 0x1000000,
++	.cp_nonpixel_size = 0x24800000,
++	.fwname = "qcom/venus-5.4/venus.mbn",
++	.dec_nodename = "video-decoder",
++	.enc_nodename = "video-encoder",
++};
++
+ 
+ #if (!IS_ENABLED(CONFIG_VIDEO_QCOM_IRIS))
+ static const struct freq_tbl sm8250_freq_table[] = {
+@@ -1237,6 +1293,7 @@
+ 	{ .compatible = "qcom,msm8998-venus", .data = &msm8998_res, },
+ 	{ .compatible = "qcom,qcm2290-venus", .data = &qcm2290_res, },
+ 	{ .compatible = "qcom,sc7180-venus", .data = &sc7180_res, },
++	{ .compatible = "qcom,sm6125-venus", .data = &sm6125_res, },
+ 	{ .compatible = "qcom,sdm660-venus", .data = &sdm660_res, },
+ 	{ .compatible = "qcom,sdm845-venus", .data = &sdm845_res, },
+ 	{ .compatible = "qcom,sdm845-venus-v2", .data = &sdm845_res_v2, },
+--- a/arch/arm64/boot/dts/qcom/sm6125.dtsi
++++ b/arch/arm64/boot/dts/qcom/sm6125.dtsi
+@@ -7,6 +7,7 @@
+ #include <dt-bindings/clock/qcom,dsi-phy-28nm.h>
+ #include <dt-bindings/clock/qcom,gcc-sm6125.h>
+ #include <dt-bindings/clock/qcom,rpmcc.h>
++#include <dt-bindings/clock/qcom,sm6125-videocc.h>
+ #include <dt-bindings/dma/qcom-gpi.h>
+ #include <dt-bindings/gpio/gpio.h>
+ #include <dt-bindings/interrupt-controller/arm-gic.h>
+@@ -1453,6 +1454,91 @@
+ 
+ 				status = "disabled";
+ 			};
++		};
++
++		venus: video-codec@5a00000 {
++			compatible = "qcom,sm6125-venus";
++			reg = <0x0 0x05a00000 0x0 0xff000>;
++			interrupts = <GIC_SPI 225 IRQ_TYPE_LEVEL_HIGH>;
++
++			power-domains = <&videocc VENUS_GDSC>,
++					<&videocc VCODEC0_GDSC>,
++					<&rpmpd SM6125_VDDCX>;
++			power-domain-names = "venus", "vcodec0", "cx";
++			operating-points-v2 = <&venus_opp_table>;
++
++			clocks = <&videocc VIDEO_CC_VENUS_CTL_CORE_CLK>,
++				 <&videocc VIDEO_CC_VENUS_AHB_CLK>,
++				 <&videocc VIDEO_CC_VENUS_CTL_AXI_CLK>,
++				 <&videocc VIDEO_CC_VCODEC0_CORE_CLK>,
++				 <&videocc VIDEO_CC_VCODEC0_AXI_CLK>;
++			clock-names = "core", "iface", "bus",
++				      "vcodec0_core", "vcodec0_bus";
++
++			iommus = <&apps_smmu 0x840 0x20>;
++			memory-region = <&venus_mem>;
++
++			interconnects = <&mmnrt_virt MASTER_VIDEO_P0 RPM_ALWAYS_TAG
++					 &bimc SLAVE_EBI_CH0 RPM_ALWAYS_TAG>,
++					<&bimc MASTER_AMPSS_M0 RPM_ALWAYS_TAG
++					 &config_noc SLAVE_VENUS_CFG RPM_ALWAYS_TAG>;
++			interconnect-names = "video-mem", "cpu-cfg";
++
++			status = "disabled";
++
++			/*
++			 * Rates come from downstream's qcom,allowed-clock-rates,
++			 * which stops at 460MHz -- this is a single-vcodec AR50
++			 * part, not one of the two-core ones.
++			 */
++			venus_opp_table: opp-table {
++				compatible = "operating-points-v2";
++
++				opp-133333333 {
++					opp-hz = /bits/ 64 <133333333>;
++					required-opps = <&rpmpd_opp_low_svs>;
++				};
++
++				opp-240000000 {
++					opp-hz = /bits/ 64 <240000000>;
++					required-opps = <&rpmpd_opp_svs>;
++				};
++
++				opp-300000000 {
++					opp-hz = /bits/ 64 <300000000>;
++					required-opps = <&rpmpd_opp_svs_plus>;
++				};
++
++				opp-380000000 {
++					opp-hz = /bits/ 64 <380000000>;
++					required-opps = <&rpmpd_opp_nom>;
++				};
++
++				opp-460000000 {
++					opp-hz = /bits/ 64 <460000000>;
++					required-opps = <&rpmpd_opp_turbo>;
++				};
++			};
++
++			video-decoder {
++				compatible = "venus-decoder";
++			};
++
++			video-encoder {
++				compatible = "venus-encoder";
++			};
++		};
++
++		videocc: clock-controller@5b00000 {
++			compatible = "qcom,sm6125-videocc";
++			reg = <0x0 0x05b00000 0x0 0x10000>;
++
++			clocks = <&rpmcc RPM_SMD_XO_CLK_SRC>,
++				 <&sleep_clk>;
++			clock-names = "bi_tcxo", "sleep_clk";
++
++			#clock-cells = <1>;
++			#power-domain-cells = <1>;
+ 		};
+ 
+ 		dispcc: clock-controller@5f00000 {

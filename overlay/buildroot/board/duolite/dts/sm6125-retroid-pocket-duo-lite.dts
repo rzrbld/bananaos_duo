@@ -2383,3 +2383,9 @@
 		qcom,master-names = "APSS", "MPSS", "ADSP", "CDSP", "TZ";
 	};
 };
+
+/* SM6125 uses the Venus 5.x / HFI v4xx VPU, separate from Adreno. */
+&venus {
+	firmware-name = "qcom/sm6125/venus.mdt";
+	status = "okay";
+};
