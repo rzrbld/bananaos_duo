@@ -9,8 +9,8 @@ Stable project rules live in [AGENTS.md](../AGENTS.md), not in this snapshot.
 | Item | Verified state |
 | --- | --- |
 | Public firmware release | `v0.1.0-alpha.35`; later local development versions are not public OTA releases yet |
-| Current local firmware | `0.1.0-alpha.46`; stable main/nightly source remains separate from the failed Venus experiment |
-| Development handheld | Original complete Alpha46 restored through A/B updating in slot B; historical kernel, DTB and full immutable root hashes verified; no experimental Venus DT node |
+| Current local firmware | `0.1.0-alpha.53`; signal-aware roaming over the verified Alpha46 base; experimental Venus work remains separate |
+| Development handheld | Alpha53 installed in slot A; active kernel, DTB and complete immutable root hashes match the checked local image; kernel/DTB remain byte-identical to original Alpha46 |
 | Slopetanium | Public `v0.3.2-beta`; writable app independently updated from CI and all 34 packaged files verified; next nightly seed pin updated in `sources.json` |
 | GBA DS Duo | Fork PR [#1](https://github.com/rzrbld/gba-ds/pull/1) merged; [v1.6.1.1](https://github.com/rzrbld/gba-ds/releases/tag/v1.6.1.1) published by CI and installed through Slopetanium; all 23 payload files matched the release ZIP |
 
@@ -71,7 +71,16 @@ not public deployment configuration.
   changing country codes or modifying saved credentials. It also includes
   `iw` for diagnostics. The weak threshold is below the measured healthy
   nearby link; the 30-minute healthy-link fallback avoids frequent scan jitter. This uses the verified Alpha46 kernel/DTB and excludes
-  the experimental Venus changes. Complete image validation/install is pending.
+  the experimental Venus changes. Source regressions and complete SD image
+  validation passed. The local image reused the verified original Alpha46 root,
+  changing only the authored Wi-Fi helper, release/build labels and adding the
+  pinned ARM64 iw binary. All other original file contents were compared.
+  Kernel/DTB are byte-identical to Alpha46. The complete A/B update was installed
+  in slot A; all three active component hashes matched the image. Wi-Fi joined
+  automatically after reboot, using channel 36 / 80 MHz with a reported
+  433 Mbps receive rate. A bounded private monitor was started; user-observed
+  walking/stream recovery is still pending. Android throughput has not been
+  measured under the same conditions, so Android performance parity is unproven.
 
 - Experimental Venus work is preserved separately on
   [`experimental/venus-sm6125`](https://github.com/rzrbld/bananaos_duo/tree/experimental/venus-sm6125).
