@@ -20,7 +20,7 @@ jobs:
           submodules: recursive
           persist-credentials: false
       - name: Host build dependencies
-        run: sudo apt-get update && sudo apt-get install -y build-essential libdrm-dev libfreetype-dev libasound2-dev zlib1g-dev python3-pil
+        run: sudo apt-get update && sudo apt-get install -y build-essential libdrm-dev libfreetype-dev libasound2-dev zlib1g-dev python3-pil squashfs-tools
       - name: Reconstruct source and test A/B updates and hardware policy
         run: make test
       - name: Compile launcher and test unequal-panel presentation

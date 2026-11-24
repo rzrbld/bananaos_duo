@@ -97,6 +97,8 @@ print('Unmodified ROCKNIX OpenABL folder present on the FAT boot partition')
 print('OpenABL boot entry, FAT kernel/DTB copies and ARM64 EFI header passed')
 
 squash = base/'rootfs.squashfs'
+import sys
+subprocess.run([sys.executable, str(source/'tools/duolite/check-root-ownership.py'), str(squash), '--unsquashfs', str(args.tools/'unsquashfs')], check=True)
 assert b'portmaster-duolite-ui' not in command('unsquashfs', '-l', squash)
 def cat(name):
     return command('unsquashfs','-cat',squash,name)
