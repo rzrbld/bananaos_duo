@@ -1,0 +1,32 @@
+--- a/ui/rnds/RndsUI.cpp
++++ b/ui/rnds/RndsUI.cpp
+@@ -503,7 +503,17 @@
+ 			if (!M) M = Font::load(dir + "/fonts/PixelifySans-Medium.ttf");
+ 			shell = std::make_shared<const Bitmap>(loadPng("game_slot.png"));
+ 			std::string sfx = s > 1.3f ? "@1.6x.png" : "@1x.png";
+-			logo = loadPng("logo" + sfx);
++			// Static status art must use the same physical scale as its fill/text.
++			// The packaged 1.6x battery otherwise looks nearly full at 2x.
++			auto statusArt = [&](const std::string& name, bool smooth)
++			{
++				Bitmap art = loadPng(name + sfx), base = loadPng(name + "@1x.png");
++				if (art.empty() || base.empty()) return art;
++				int w = std::max(1, (int)std::lround(base.w * s));
++				int h = std::max(1, (int)std::lround(base.h * s));
++				return art.w == w && art.h == h ? art : (smooth ? resize(art, w, h) : resizeNearest(art, w, h));
++			};
++			logo = statusArt("logo", true);
+ 			if (!themeFiles.logo.empty())
+ 				if (Bitmap own = decodeFile(themeFiles.logo); !own.empty())
+ 				{
+@@ -517,8 +527,8 @@
+ 			if (!themeFiles.wallTop.empty()) if (Bitmap b = decodeFile(themeFiles.wallTop); !b.empty()) wallTop = resize(b, be->screenWidth(0) > 0 ? be->screenWidth(0) : sw, sh);
+ 			if (!themeFiles.wallBottom.empty()) if (Bitmap b = decodeFile(themeFiles.wallBottom); !b.empty()) wallBottom = resize(b, sw, sh);
+ 			tintAccent(logo);
+-			wifi = loadPng("wifi" + sfx);
+-			batt = loadPng("battery" + sfx);
++			wifi = statusArt("wifi", false);
++			batt = statusArt("battery", false);
+ 			consoleDark = loadPng("console-dark" + sfx);
+ 			consoleLight = loadPng("console-light" + sfx);
+ 			// The packaged art is 1x/1.6x; the slot and cartridge use the

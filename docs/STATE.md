@@ -21,6 +21,22 @@ not public deployment configuration.
 
 ## Recent verified findings
 
+- Alpha56 work: firmware CI run 45316271038 compiled and passed image/source
+  checks, then failed at `legal-info` because tests had generated Python bytecode
+  inside authored overlay directories, changing prepare's fingerprint. Preparation
+  now excludes `__pycache__`, `.pyc` and `.pyo` from both fingerprint and overlay
+  copying; its regression still detects real content/mode changes. The complete
+  test-then-prepare sequence passed locally.
+- The live fuel gauge and charge ratio agreed at 66%. The near-full launcher
+  icon was a scale mismatch: its 1.6x frame was drawn at native asset size while
+  its fill used the Duo's 2x logical scale. Status art now scales from its 1x
+  dimensions to the actual UI scale. Real dark/light rendered regressions verify
+  25%, 66% and 100% fills at 1x/1.6x/2x. No battery calibration was changed.
+- Seven original transparent 32px console sprites replace generic icons for
+  3DS, PSP, Dreamcast, Master System, MAME, Amstrad CPC and Wii. Their exact
+  system aliases override the generic category map; user themes remain separate.
+  Complete Alpha56 image and on-device validation are pending.
+
 - Alpha46 restores upper touchscreen initialization after the first
   display modeset and provides per-output compositor assignments. An initial
   live reprobe registered the existing Himax driver, and the user confirmed

@@ -1,0 +1,15 @@
+--- a/ui/assets/rnds/systems.cfg
++++ b/ui/assets/rnds/systems.cfg
+@@ -93,3 +93,12 @@
+ activity                                                recent.png      #7ac96b   Banana [app]
+ # Game & Watch (systems.conf's [gameandwatch], MAME): a Multi Screen unit, open, in Donkey Kong II's colours
+ gameandwatch,gw                                         gameandwatch.png  #cc6234
++
++# Duo Lite's explicit console sprites override the generic hardware categories.
++3ds,n3ds                            3ds.png           #7f8aaf
++psp                                 psp.png           #5c86e0
++dreamcast                           dreamcast.png     #e08a4e
++mastersystem,sms                     mastersystem.png  #c54949
++mame,mame2003plus,mame2003-plus       mame.png          #e8a020
++amstradcpc,cpc                       amstradcpc.png    #3d9e9a
++wii                                 wii.png           #58a7cc

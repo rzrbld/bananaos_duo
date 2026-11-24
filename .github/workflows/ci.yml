@@ -20,13 +20,14 @@ jobs:
           submodules: recursive
           persist-credentials: false
       - name: Host build dependencies
-        run: sudo apt-get update && sudo apt-get install -y build-essential libdrm-dev libfreetype-dev libasound2-dev zlib1g-dev
+        run: sudo apt-get update && sudo apt-get install -y build-essential libdrm-dev libfreetype-dev libasound2-dev zlib1g-dev python3-pil
       - name: Reconstruct source and test A/B updates and hardware policy
         run: make test
       - name: Compile launcher and test unequal-panel presentation
         working-directory: build/source/ui
         run: |
           make host
+          python3 ../../tools/duolite/test-battery-art.py banana-ui assets/rnds
           make tests/plane-selection-test tests/scanout-test tests/splash-test
           make ALSA=0 CXXFLAGS=-O0 tests/settings-layout-test
           make ALSA=0 CXXFLAGS=-O0 tests/home-layout-test

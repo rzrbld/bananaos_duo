@@ -15,11 +15,20 @@ PINS = json.loads((ROOT / 'sources.json').read_text())
 def run(*args, **kwargs):
     return subprocess.run(args, check=True, **kwargs)
 
+def authored_input(path):
+    return '__pycache__' not in path.parts and path.suffix not in ('.pyc', '.pyo')
+
+
+def copy_overlay(source, destination):
+    shutil.copytree(source, destination, dirs_exist_ok=True, symlinks=True,
+                    ignore=shutil.ignore_patterns('__pycache__', '*.pyc', '*.pyo'))
+
+
 def fingerprint():
     h = hashlib.sha256()
     files = [ROOT/'sources.json', ROOT/'scripts/prepare.py']
     for folder in ('patches', 'overlay'):
-        files += sorted(p for p in (ROOT/folder).rglob('*') if p.is_file() or p.is_symlink())
+        files += sorted(p for p in (ROOT/folder).rglob('*') if (p.is_file() or p.is_symlink()) and authored_input(p))
     for p in files:
         h.update(str(p.relative_to(ROOT)).encode())
         h.update(str(p.lstat().st_mode & 0o777).encode())
@@ -62,7 +71,7 @@ def prepare():
     with urllib.request.urlopen(url, timeout=60) as response: data = response.read()
     if hashlib.sha256(data).hexdigest() != pin['license_sha256']: raise SystemExit('Menu license hash mismatch')
     (menu/'COPYING').write_bytes(data)
-    shutil.copytree(ROOT/'overlay', temp, dirs_exist_ok=True, symlinks=True)
+    copy_overlay(ROOT/'overlay', temp)
     for patch in sorted((ROOT/'patches').glob('*.patch')):
         run('git', '-C', str(temp), 'apply', '--check', str(patch))
         run('git', '-C', str(temp), 'apply', str(patch))

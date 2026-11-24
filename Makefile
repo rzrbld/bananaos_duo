@@ -13,6 +13,7 @@ check:
 	docker run --rm --user $$(id -u):$$(id -g) -v $(CURDIR)/build/source:/source:ro -v $(CURDIR)/build/work:/work banana-duolite-native-builder:bookworm python3 /source/tools/duolite/test-wifi-roaming.py /work/native/build/linux-custom/drivers/net/wireless/ath/ath10k
 
 test: prepare
+	python3 tests/test-prepare.py
 	python3 tests/test-update.py
 	python3 tests/test-emulator-settings.py
 	python3 tests/test-slopetanium.py
