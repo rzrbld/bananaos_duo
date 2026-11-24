@@ -25,3 +25,6 @@ CONFIG_SMB_SERVER=m
 CONFIG_DMABUF_HEAPS=y
 CONFIG_DMABUF_HEAPS_SYSTEM=y
 CONFIG_DMABUF_HEAPS_CMA=y
+
+# Video frame queues need headroom beyond the original 32 MiB CMA default.
+CONFIG_CMA_SIZE_MBYTES=128
