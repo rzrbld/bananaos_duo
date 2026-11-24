@@ -9,8 +9,8 @@ Stable project rules live in [AGENTS.md](../AGENTS.md), not in this snapshot.
 | Item | Verified state |
 | --- | --- |
 | Public firmware release | `v0.1.0-alpha.35`; later local development versions are not public OTA releases yet |
-| Current local firmware | `0.1.0-alpha.55`; signal-aware roaming and the corrected WCN3990 teardown fix over the stable base; experimental Venus remains separate |
-| Development handheld | Alpha55 installed in slot A; active kernel, DTB and complete root hashes verified; DTB identical to Alpha46, stable kernel configuration unchanged, kernel rebuilt with the scoped Wi-Fi fix |
+| Current local firmware | `0.1.0-alpha.56`; corrected battery/status artwork and seven console icons over the verified Alpha55 base; experimental Venus remains separate |
+| Development handheld | Alpha56 installed in slot B; active kernel, DTB and complete root hashes verified; kernel/DTB unchanged from verified Alpha55, DTB identical to Alpha46 |
 | Slopetanium | Public `v0.3.2-beta`; writable app independently updated from CI and all 34 packaged files verified; next nightly seed pin updated in `sources.json` |
 | GBA DS Duo | Fork PR [#1](https://github.com/rzrbld/gba-ds/pull/1) merged; [v1.6.1.1](https://github.com/rzrbld/gba-ds/releases/tag/v1.6.1.1) published by CI and installed through Slopetanium; all 23 payload files matched the release ZIP |
 
@@ -20,6 +20,18 @@ repository. Paths and private device connection details belong to the workspace,
 not public deployment configuration.
 
 ## Recent verified findings
+
+- CI run 45392642107 exposed an incorrect relative path in the new battery
+  regression invocation; commit 76fbe55 corrects it, and the exact command passed
+  locally. Replacement manual run [45394058477](https://github.com/rzrbld/bananaos_duo/actions/runs/45394058477)
+  has passed checks; the full build was still in progress at this review.
+- Direct Steam Remote Play integration is a separate LOCAL project under
+  `work/steamlink-duo`. The user explicitly declined publication for now; no
+  new public repository was created. Valve's unmodified ARM64 client starts,
+  registers the controller and connects to Steam's Remote Client service using
+  app-owned Xwayland/Weston and native OS graphics. Pairing, physical controls,
+  orientation and actual streaming remain unverified. App/client/pairing storage
+  is writable; Valve downloads and profiles are excluded from Git and app ZIPs.
 
 - Alpha56 work: firmware CI run 45316271038 compiled and passed image/source
   checks, then failed at `legal-info` because tests had generated Python bytecode
@@ -35,7 +47,7 @@ not public deployment configuration.
 - Seven original transparent 32px console sprites replace generic icons for
   3DS, PSP, Dreamcast, Master System, MAME, Amstrad CPC and Wii. Their exact
   system aliases override the generic category map; user themes remain separate.
-  Complete Alpha56 image and on-device validation are pending.
+  The complete Alpha56 image was installed and all active hashes verified. The user confirmed both the icons and battery indicator look better.
 
 - Alpha46 restores upper touchscreen initialization after the first
   display modeset and provides per-output compositor assignments. An initial
