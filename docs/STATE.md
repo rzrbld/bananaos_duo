@@ -9,8 +9,8 @@ Stable project rules live in [AGENTS.md](../AGENTS.md), not in this snapshot.
 | Item | Verified state |
 | --- | --- |
 | Public firmware release | `v0.1.0-alpha.35`; later local development versions are not public OTA releases yet |
-| Current local firmware | `0.1.0-alpha.53`; signal-aware roaming over the verified Alpha46 base; experimental Venus work remains separate |
-| Development handheld | Alpha53 installed in slot A; active kernel, DTB and complete immutable root hashes match the checked local image; kernel/DTB remain byte-identical to original Alpha46 |
+| Current local firmware | `0.1.0-alpha.55`; signal-aware roaming and the corrected WCN3990 teardown fix over the stable base; experimental Venus remains separate |
+| Development handheld | Alpha55 installed in slot A; active kernel, DTB and complete root hashes verified; DTB identical to Alpha46, stable kernel configuration unchanged, kernel rebuilt with the scoped Wi-Fi fix |
 | Slopetanium | Public `v0.3.2-beta`; writable app independently updated from CI and all 34 packaged files verified; next nightly seed pin updated in `sources.json` |
 | GBA DS Duo | Fork PR [#1](https://github.com/rzrbld/gba-ds/pull/1) merged; [v1.6.1.1](https://github.com/rzrbld/gba-ds/releases/tag/v1.6.1.1) published by CI and installed through Slopetanium; all 23 payload files matched the release ZIP |
 
@@ -99,7 +99,15 @@ not public deployment configuration.
   instead checks mac80211's actual pairwise-key flag and keeps the WMI group
   exclusion. The regression now imports flag definitions from the real kernel
   headers rather than synthetic constants. Corrected kernel build/test passed;
-  controlled Alpha55 installation and handover verification are pending.
+  complete Alpha55 source/image checks and installed component verification
+  passed. Controlled handovers completed in 582 ms and 399 ms with unchanged
+  IP; the kernel logged about 255–260 ms from disconnect to association and no
+  key timeout. The original AP was restored and the launcher left running.
+  These are controlled idle tests, not a post-fix Xbox streaming measurement.
+  The user's stream/quality recovery test is deferred until next session.
+  CI run [45316271038](https://github.com/rzrbld/bananaos_duo/actions/runs/45316271038)
+  was manually started on functional source commit `91c22ad`. It is a main-branch
+  artifact build, not a public OTA release; completion is still pending.
   Upstream reference: https://lore.kernel.org/linux-wireless/20260918-ath10k-del-v1-1-53cd7a7d682b@ixit.cz/
 
 - Experimental Venus work is preserved separately on
@@ -222,6 +230,10 @@ Current local/installed versions are listed above. Public firmware remains
 Alpha35 until a separate tagged CI release is published. Main-branch firmware
 CI produces test artifacts; it does not publish a release automatically.
 
-Private local evidence for this work is under `work/duolite/gba-ds-diagnosis/`
+Latest private firmware/roaming evidence is under `work/duolite/local55/`, with
+the preceding failed guard test under `work/duolite/local54/`. No device network
+logs or credentials are committed.
+
+Earlier private local evidence is under `work/duolite/gba-ds-diagnosis/`
 and `work/duolite/local40/`. Earlier verified image manifests and exFAT tests are
 under `work/duolite/local39/`. These are workspace paths, intentionally untracked.
