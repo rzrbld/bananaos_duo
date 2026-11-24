@@ -48,6 +48,9 @@ Lite. Read [docs/README.md](docs/README.md), especially
 - Run checks appropriate to the change. Build a complete firmware before
   installing OS changes; do not leave an untracked collection of live edits.
   After installation, verify the active components against the built image.
+- Generate SquashFS ownership under the Buildroot fakeroot environment. Never
+  repack an extracted root using host UID/GID metadata. Preserve service owners
+  and pass the privileged startup/setuid ownership image check before deployment.
 
 ## Device work and handoff
 

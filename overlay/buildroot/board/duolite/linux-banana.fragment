@@ -20,3 +20,8 @@ CONFIG_FW_LOADER_USER_HELPER=y
 CONFIG_FW_LOADER_USER_HELPER_FALLBACK=y
 # Native SMB file sharing uses the same userspace tools as upstream BananaLinux.
 CONFIG_SMB_SERVER=m
+
+# Standard userspace DMA buffers, including the existing reserved CMA pool.
+CONFIG_DMABUF_HEAPS=y
+CONFIG_DMABUF_HEAPS_SYSTEM=y
+CONFIG_DMABUF_HEAPS_CMA=y

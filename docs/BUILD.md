@@ -20,6 +20,12 @@ After changing patches or overlay files, run `make clean-source && make prepare`
 
 Build work, downloaded archives and the compiler cache live in `build/work`. Final assets live in `dist`. `make check` verifies the built GPT/FAT/squashfs contents, native executables, release source, emulator assets and unchanged OpenABL files. `make release` also collects Buildroot legal information and bundles corresponding sources. No ROMs, BIOS files, network passwords or local bring-up logs are packaged.
 
+SquashFS must retain target ownership through Buildroot's fakeroot step. An
+extracted tree on the host has host ownership; repacking it directly can turn
+setuid BusyBox into a non-root program and prevent startup. The image checker
+now rejects non-root ownership on privileged startup paths and setuid files.
+Preserve service-specific owners when making a local complete image.
+
 If a source archive exceeds the release asset limit, it is split into numbered `.part000`, `.part001`, … files. Verify their checksums, concatenate them in order with `cat ...part* > sources.tar.gz`, then extract the gzip tar.
 
 ## Automation
