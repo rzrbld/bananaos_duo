@@ -45,3 +45,14 @@ an unexpected restart; the user also reported a sluggish launcher. Alpha46 was
 restored through the normal A/B switch. This is not stable-decoder validation.
 Alpha48 removes the experimental global interconnect driver and its paths to
 isolate that regression. Repeat decode/close and idle stability remain required.
+
+Alpha49 adds the MIT-licensed
+[Venus VA-API backend](https://github.com/snowf14k3/venus-vaapi-driver/tree/37e1030aba11f66e303e4f5fb0c3a13e2a78265e),
+pinned and hashed in its Buildroot recipe. It includes libva and vainfo and
+reconfigures FFmpeg with VA-API support. A small package patch supplies stable
+V4L2 UAPI constants absent from the SDK's Linux 5.4 headers; the running target
+kernel remains Linux 7.3.5. Runtime capability/control checks remain in place.
+The backend is OS-owned; Greenlight and its user profile remain independently
+installed apps. It does not make acceleration a verified fact: the pending
+combined test must show actual Venus decoding and Turnip/Vulkan composition.
+HEVC's experimental opt-in remains disabled.

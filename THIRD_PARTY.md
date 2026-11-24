@@ -11,6 +11,8 @@ This repository is a port layer over [JorreFog/BananaLinux](https://github.com/J
 | ROCKNIX kernel support | `overlay/buildroot/board/duolite/SOURCES` | Linux/kernel patches GPL-2.0 and original per-file notices |
 | OpenABL installer | Exact supplied ROCKNIX image and four SHA-256s in `openabl-source.json` | Original files and contents unchanged; not run by system updates |
 | Qualcomm firmware | Pinned recipes for linux-firmware and ROCKNIX extra-firmware | Component-specific binary licenses/notices; Adreno firmware notices installed |
+| SM6125 Venus clock/decoder support | PeacockProject/linux_sm6125_ginkgo, commit `db3f159aa32c11688ee4873a6218ea113052fee6`; adapted kernel patch | Original GPL-2.0-only and BSD DT notices retained |
+| Venus VA-API backend | snowf14k3/venus-vaapi-driver, pin/hash in package recipe | MIT; collected by Buildroot legal-info |
 | Mesa Freedreno / Turnip | `overlay/buildroot/package/mesa3d-adreno` | Mesa MIT/SGI/Khronos notices |
 | BananaDS | Upstream package pin plus `tools/duolite/patches` in the prepared tree | GPL-3.0 and its dependencies' licenses |
 | RetroArch and added cores | Pinned upstream package recipes plus port packages | GPL for RetroArch/Citra/PPSSPP/Flycast/Dolphin/Caprice32; Genesis Plus GX and MAME 2003-Plus retain their original noncommercial licenses |

@@ -9,7 +9,7 @@ Stable project rules live in [AGENTS.md](../AGENTS.md), not in this snapshot.
 | Item | Verified state |
 | --- | --- |
 | Public firmware release | `v0.1.0-alpha.35`; later local development versions are not public OTA releases yet |
-| Current local firmware | Alpha46 restored after Alpha47 regressions; Alpha48 builds Venus support while preserving the baseline system bus policy |
+| Current local firmware | Alpha46 active/recovered; Alpha48 inactive image checked; Alpha49 combines baseline bus policy with the Venus VA-API backend for testing |
 | Development handheld | Alpha45 running in slot B; kernel, DTB and complete immutable root matched the checked local image; gamepad registered, actual edit/normal grid scanouts checked and exact saved layout restored |
 | Slopetanium | Public `v0.3.2-beta`; writable app independently updated from CI and all 34 packaged files verified; next nightly seed pin updated in `sources.json` |
 | GBA DS Duo | Fork PR [#1](https://github.com/rzrbld/gba-ds/pull/1) merged; [v1.6.1.1](https://github.com/rzrbld/gba-ds/releases/tag/v1.6.1.1) published by CI and installed through Slopetanium; all 23 payload files matched the release ZIP |
@@ -58,6 +58,10 @@ not public deployment configuration.
   the shared bus votes is unsafe. The precise reset cause is not yet proven.
   Signed firmware staging tests pass; repeat decoder/power stability and
   Electron hardware decode are still pending. Never advertise Alpha47 as stable.
+  The user confirmed Alpha46 restored normal responsiveness. Alpha48 built and
+  passed image checks, then installed into the inactive slot without booting;
+  Alpha46 remains selected while Alpha49 adds the pinned Venus VA-API backend
+  for the requested combined Venus decode + Turnip/Vulkan test.
 
 - Alpha45 removes the multi-row frame and page counter, reuses the themed
   horizontal rail for touch page navigation, enlarges the selected grid icon by

@@ -1,0 +1,10 @@
+config BR2_PACKAGE_VENUS_VAAPI
+	bool "Venus stateful V4L2 VA-API backend"
+	depends on BR2_BANANA_DUOLITE
+	depends on BR2_INSTALL_LIBSTDCPP
+	depends on BR2_TOOLCHAIN_HAS_THREADS
+	depends on !BR2_STATIC_LIBS
+	select BR2_PACKAGE_LIBVA
+	help
+	  VA-API bridge for the Qualcomm Venus V4L2 decoder. Graphics
+	  composition continues to use the OS Freedreno/Turnip drivers.

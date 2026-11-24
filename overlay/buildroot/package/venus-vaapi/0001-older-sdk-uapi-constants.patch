@@ -1,0 +1,61 @@
+From: BananaOS Duo Lite maintainers
+Subject: [PATCH] Build with an older SDK's Linux UAPI headers
+
+The target kernel implements these controls, but the pinned Bootlin SDK has
+Linux 5.4 headers. Supply only stable missing UAPI constants, retaining runtime
+capability/control probes. Keep the H.264 level constant local to avoid testing
+an enum member with the preprocessor.
+
+--- /dev/null
++++ b/src/v4l2_compat.h
+@@ -0,0 +1,28 @@
++// SPDX-License-Identifier: MIT
++#ifndef VENUS_V4L2_COMPAT_H
++#define VENUS_V4L2_COMPAT_H
++
++#include <linux/videodev2.h>
++#include <linux/v4l2-controls.h>
++
++/* Stable UAPI numbers from Linux v7.3.5. The Bootlin SDK uses 5.4 headers,
++ * while the target kernel implements these newer controls. Runtime ioctls
++ * still determine whether an individual control/format is supported. */
++#ifndef V4L2_CID_CODEC_BASE
++#define V4L2_CID_CODEC_BASE V4L2_CID_MPEG_BASE
++#endif
++#ifndef V4L2_PIX_FMT_P010
++#define V4L2_PIX_FMT_P010 v4l2_fourcc('P', '0', '1', '0')
++#endif
++#ifndef V4L2_CID_MPEG_VIDEO_AU_DELIMITER
++#define V4L2_CID_MPEG_VIDEO_AU_DELIMITER (V4L2_CID_CODEC_BASE + 231)
++#endif
++#ifndef V4L2_CID_MPEG_VIDEO_DEC_DISPLAY_DELAY
++#define V4L2_CID_MPEG_VIDEO_DEC_DISPLAY_DELAY (V4L2_CID_CODEC_BASE + 653)
++#endif
++#ifndef V4L2_CID_MPEG_VIDEO_DEC_DISPLAY_DELAY_ENABLE
++#define V4L2_CID_MPEG_VIDEO_DEC_DISPLAY_DELAY_ENABLE (V4L2_CID_CODEC_BASE + 654)
++#endif
++/* Level 5.2 is an enum member in newer headers; its ABI value is 16. */
++#define VENUS_H264_LEVEL_5_2 16
++#endif
+--- a/meson.build
++++ b/meson.build
+@@ -21,6 +21,8 @@
+   '-DVENUS_VAAPI_PROBE_LIMIT=@0@'.format(get_option('probe_limit')),
+   language: 'c',
+ )
++
++add_project_arguments('-include', meson.current_source_dir() / 'src/v4l2_compat.h', language: ['c', 'cpp'])
+ 
+ project_inc = include_directories('src')
+ 
+--- a/src/encode.c
++++ b/src/encode.c
+@@ -648,7 +648,7 @@
+     case 51:
+         return V4L2_MPEG_VIDEO_H264_LEVEL_5_1;
+     case 52:
+-        return V4L2_MPEG_VIDEO_H264_LEVEL_5_2;
++        return VENUS_H264_LEVEL_5_2;
+     default:
+         return UINT32_MAX;
+     }

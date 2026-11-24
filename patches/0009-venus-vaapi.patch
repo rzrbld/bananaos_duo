@@ -1,0 +1,10 @@
+--- a/buildroot/Config.in
++++ b/buildroot/Config.in
+@@ -4,6 +4,7 @@
+ 	depends on BR2_aarch64
+ 
+ source "$BR2_EXTERNAL_BANANA_PATH/package/qcom-adreno-firmware/Config.in"
++source "$BR2_EXTERNAL_BANANA_PATH/package/venus-vaapi/Config.in"
+ source "$BR2_EXTERNAL_BANANA_PATH/package/qcom-qrtr/Config.in"
+ source "$BR2_EXTERNAL_BANANA_PATH/package/qcom-tqftpserv/Config.in"
+ source "$BR2_EXTERNAL_BANANA_PATH/package/qcom-rmtfs/Config.in"
