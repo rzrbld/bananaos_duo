@@ -101,6 +101,7 @@ assert b'portmaster-duolite-ui' not in command('unsquashfs', '-l', squash)
 def cat(name):
     return command('unsquashfs','-cat',squash,name)
 assert cat('etc/banana/board').strip() == b'duolite'
+assert b'bgscan="simple:15:-70:1800"' in cat('usr/libexec/banana/wifi')
 import io, zipfile
 with zipfile.ZipFile(io.BytesIO(cat('usr/share/slopetanium/seed.zip'))) as seed:
     assert seed.read('slopetanium/slopetanium-ui.aarch64')[:4] == b'\x7fELF'
@@ -145,7 +146,7 @@ for rel in ['usr/libexec/banana/wifi','usr/libexec/banana/ssh','usr/libexec/bana
     assert cat(rel) == (source/'system/rootfs'/rel).read_bytes(),rel
 assert cat('etc/banana/sleep.d/10-wifi') == (source/'system/rootfs/etc/banana/sleep.d/10-wifi').read_bytes()
 for rel in ['usr/bin/banana-ui','usr/bin/bananads','usr/sbin/bananad','usr/bin/dodakvarter',
-            'usr/bin/qrtr-ns','usr/bin/tqftpserv','usr/bin/rmtfs','usr/sbin/wpa_supplicant','usr/sbin/dropbear',
+            'usr/bin/qrtr-ns','usr/bin/tqftpserv','usr/bin/rmtfs','usr/sbin/wpa_supplicant','usr/sbin/iw','usr/sbin/dropbear',
             'usr/bin/bluetoothctl','usr/bin/bluealsa','usr/bin/bluealsa-cli',
             'usr/bin/dbus-daemon','usr/libexec/bluetooth/bluetoothd',
             'usr/lib/alsa-lib/libasound_module_pcm_bluealsa.so']:

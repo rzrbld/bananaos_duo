@@ -55,6 +55,24 @@ not public deployment configuration.
   was read, printed or published. The installed release has the exact tested
   launcher flags; a subsequent user stream test is still separate from the trial.
 
+- Greenlight Duo.6 was built/published by app CI and installed through
+  Slopetanium; all 598 packaged files verified. Built-in face buttons now use
+  Xbox positions (B→A, A→B, Y→X, X→Y). Home quits; Select+Start is no longer a
+  quit chord. Navigation-loop tests cover menus/streams, chord pass-through and
+  external Guide isolation. Physical confirmation of these new controls is pending.
+
+- Wi-Fi diagnosis found no configured connected-state background scanning.
+  A manual scan moved the Duo from a weaker 20 MHz link to an 80 MHz AP;
+  local TCP measured about 299 Mbps down / 171 Mbps up with power saving on,
+  versus 310 / 174 with it off. Original power saving was restored. The user
+  then changed the farther AP; both now advertise channel 36 / 80 MHz, and
+  the Duo is associated with the stronger point. Alpha53 adds a default
+  `simple:15:-70:1800` background-roaming policy without pinning a BSSID,
+  changing country codes or modifying saved credentials. It also includes
+  `iw` for diagnostics. The weak threshold is below the measured healthy
+  nearby link; the 30-minute healthy-link fallback avoids frequent scan jitter. This uses the verified Alpha46 kernel/DTB and excludes
+  the experimental Venus changes. Complete image validation/install is pending.
+
 - Experimental Venus work is preserved separately on
   [`experimental/venus-sm6125`](https://github.com/rzrbld/bananaos_duo/tree/experimental/venus-sm6125).
   Complete native and VA-API 720p clips produced correct pixels, but streaming
