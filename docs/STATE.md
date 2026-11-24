@@ -10,7 +10,7 @@ Stable project rules live in [AGENTS.md](../AGENTS.md), not in this snapshot.
 | --- | --- |
 | Public firmware release | `v0.1.0-alpha.35`; later local development versions are not public OTA releases yet |
 | Current local firmware | `0.1.0-alpha.56`; corrected battery/status artwork and seven console icons over the verified Alpha55 base; experimental Venus remains separate |
-| Development handheld | Verified Alpha56 remains in slot B. Experimental local Alpha57 was written to slot A but showed black screen and did not reconnect; recovery to B is pending. Kernel/DTB were copied unchanged; active Alpha57 hashes could not be checked |
+| Development handheld | Recovered to Alpha56 in slot B, now also the persistent default. Active kernel, DTB and complete root reverified against the original Alpha56 image. Failed experimental Alpha57 remains in slot A; do not select it |
 | Slopetanium | Public `v0.3.2-beta`; writable app independently updated from CI and all 34 packaged files verified; next nightly seed pin updated in `sources.json` |
 | GBA DS Duo | Fork PR [#1](https://github.com/rzrbld/gba-ds/pull/1) merged; [v1.6.1.1](https://github.com/rzrbld/gba-ds/releases/tag/v1.6.1.1) published by CI and installed through Slopetanium; all 23 payload files matched the release ZIP |
 
@@ -32,7 +32,7 @@ not public deployment configuration.
   pinned driver version. Complete Alpha57 image/source checks and 44-ELF native
   dependency closure passed, but its first hardware boot showed black screen and
   no SSH reconnection. This is a FAILED candidate, not a usable firmware or a
-  proven streaming fix. Alpha56 remains intact in slot B; user recovery requested.
+  proven streaming fix. The user booted Alpha56 in slot B; the OS updater switched the persistent default to B. All active component hashes were reverified against the original Alpha56 image.
   Commit dbbca8b restores the verified Alpha56 default and version for nightly
   builds. The optional desktop graphics recipe remains disabled for investigation.
 
