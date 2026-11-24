@@ -27,7 +27,7 @@ jobs:
         working-directory: build/source/ui
         run: |
           make host
-          python3 ../../tools/duolite/test-battery-art.py banana-ui assets/rnds
+          python3 ../tools/duolite/test-battery-art.py banana-ui assets/rnds
           make tests/plane-selection-test tests/scanout-test tests/splash-test
           make ALSA=0 CXXFLAGS=-O0 tests/settings-layout-test
           make ALSA=0 CXXFLAGS=-O0 tests/home-layout-test
