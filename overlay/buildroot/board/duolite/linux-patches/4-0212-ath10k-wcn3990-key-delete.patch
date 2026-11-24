@@ -1,0 +1,51 @@
+From: David Heidelberg <david@ixit.cz>
+Subject: wifi: ath10k: avoid the missing WCN3990 pairwise-delete completion
+
+Adapted from the upstream RFC, restricted to WCN3990 and explicit pairwise
+removal. Retain the actual deletion command and all new/group-key waits.
+Observed on Duo Lite WLAN.HL.3.0.2: every captured roam paused three seconds
+between old-AP teardown and new authentication, ending with -ETIMEDOUT.
+This does not enable software crypto or bypass new-key installation errors.
+
+Source: https://lore.kernel.org/linux-wireless/20260918-ath10k-del-v1-1-53cd7a7d682b@ixit.cz/
+Original Signed-off-by: David Heidelberg <david@ixit.cz>
+
+--- a/drivers/net/wireless/ath/ath10k/core.c
++++ b/drivers/net/wireless/ath/ath10k/core.c
+@@ -746,6 +746,7 @@
+ 		.use_fw_tx_credits = false,
+ 		.delay_unmap_buffer = true,
+ 		.mcast_frame_registration = false,
++		.no_pairwise_key_del_ind = true,
+ 	},
+ };
+ 
+--- a/drivers/net/wireless/ath/ath10k/hw.h
++++ b/drivers/net/wireless/ath/ath10k/hw.h
+@@ -638,6 +638,9 @@
+ 
+ 	/* The hardware support multicast frame registrations */
+ 	bool mcast_frame_registration;
++
++	/* WCN3990 sends no completion for pairwise key removal. */
++	bool no_pairwise_key_del_ind;
+ };
+ 
+ struct htt_resp;
+--- a/drivers/net/wireless/ath/ath10k/mac.c
++++ b/drivers/net/wireless/ath/ath10k/mac.c
+@@ -403,6 +403,14 @@
+ 	ret = ath10k_send_key(arvif, key, cmd, macaddr, flags);
+ 	if (ret)
+ 		return ret;
++
++	/* WCN3990 does not acknowledge cipher-none pairwise deletion.
++	 * Group removal installs a random replacement key and must still wait,
++	 * as must every new key installation and other hardware families.
++	 */
++	if (cmd == DISABLE_KEY && (flags & WMI_KEY_PAIRWISE) &&
++	    !(flags & WMI_KEY_GROUP) && ar->hw_params.no_pairwise_key_del_ind)
++		return 0;
+ 
+ 	time_left = wait_for_completion_timeout(&ar->install_key_done, 3 * HZ);
+ 	if (time_left == 0)

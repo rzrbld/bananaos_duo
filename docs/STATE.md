@@ -82,6 +82,20 @@ not public deployment configuration.
   walking/stream recovery is still pending. Android throughput has not been
   measured under the same conditions, so Android performance parity is unproven.
 
+- Alpha53 walking feedback: the stream continued/recovered without reopening
+  Greenlight. The user clarified that quality and frame rate normalized over
+  about ten seconds, **not** that Wi-Fi was disconnected for ten seconds.
+  Monitoring caught a same-IP AP transition with about a three-second ath10k
+  old-key timeout. Both APs advertise Neighbor Report and BSS Transition, but
+  the observed authentication suite is PSK without advertised FT.
+  Alpha54 adapts David Heidelberg's WCN3990 pairwise-delete RFC, restricted to
+  this hardware and explicit pairwise removal. The removal command is still
+  sent; new keys, group keys, other hardware and send errors keep their checks.
+  The actual C routine passed branch/error regressions. A clean stable-source
+  kernel build passed with configuration identical to running Alpha53 and a DTB
+  byte-identical to original Alpha46. Complete Alpha54 validation/install pending.
+  Upstream reference: https://lore.kernel.org/linux-wireless/20260918-ath10k-del-v1-1-53cd7a7d682b@ixit.cz/
+
 - Experimental Venus work is preserved separately on
   [`experimental/venus-sm6125`](https://github.com/rzrbld/bananaos_duo/tree/experimental/venus-sm6125).
   Complete native and VA-API 720p clips produced correct pixels, but streaming

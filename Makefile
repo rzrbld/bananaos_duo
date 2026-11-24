@@ -10,6 +10,7 @@ check:
 	docker run --rm --user $$(id -u):$$(id -g) -v $(CURDIR)/build/source:/source:ro -v $(CURDIR)/build/work:/work banana-duolite-native-builder:bookworm python3 /source/tools/duolite/check-image.py --images /work/native/images --tools /work/native/host/bin
 	docker run --rm --user $$(id -u):$$(id -g) -v $(CURDIR)/build/source:/source:ro -v $(CURDIR)/build/work:/work banana-duolite-native-builder:bookworm python3 /source/tools/duolite/test-headphone-pa.py /work/native/build/linux-custom/sound/soc/codecs/wcd937x.c
 	docker run --rm --user $$(id -u):$$(id -g) -v $(CURDIR)/build/source:/source:ro -v $(CURDIR)/build/work:/work banana-duolite-native-builder:bookworm python3 /source/tools/duolite/test-rumble.py /work/native/build/linux-custom/drivers/input/misc/aw86927.c /work/native/build/linux-custom/drivers/input/joystick/rsinput.c
+	docker run --rm --user $$(id -u):$$(id -g) -v $(CURDIR)/build/source:/source:ro -v $(CURDIR)/build/work:/work banana-duolite-native-builder:bookworm python3 /source/tools/duolite/test-wifi-roaming.py /work/native/build/linux-custom/drivers/net/wireless/ath/ath10k
 
 test: prepare
 	python3 tests/test-update.py
