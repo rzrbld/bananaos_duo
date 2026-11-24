@@ -22,6 +22,17 @@ not public deployment configuration.
 
 ## Recent verified findings
 
+- CI release handoff: Firmware run [45394058477](https://github.com/rzrbld/bananaos_duo/actions/runs/45394058477)
+  succeeded for Alpha56 and uploaded a manual/main-branch artifact; it did not
+  publish a release. At the user's request, immutable tag `v0.1.0-alpha.61` was
+  created at `5dbf1a6` and the existing Firmware workflow dispatched as
+  [45434833865](https://github.com/rzrbld/bananaos_duo/actions/runs/45434833865).
+  That tagged run builds/checks/packages/publishes all prerelease assets through
+  CI; no local asset upload is involved. Source/A-B/hardware checks have passed;
+  launcher checks were running at this handoff. Do not rewrite the tag or claim
+  the prerelease published before its build/publish jobs succeed. The handheld
+  remains on its verified local Alpha61; no device changes were made for CI.
+
 - Alpha61 fixes a proven video-buffer capacity/fragmentation failure. The 32 MiB
   CMA pool repeatedly rejected 376-page allocations despite free general RAM.
   The kernel now reserves 128 MiB, with the same device tree, radio scan policy,
@@ -75,7 +86,8 @@ not public deployment configuration.
 - CI run 45392642107 exposed an incorrect relative path in the new battery
   regression invocation; commit 76fbe55 corrects it, and the exact command passed
   locally. Replacement manual run [45394058477](https://github.com/rzrbld/bananaos_duo/actions/runs/45394058477)
-  has passed checks; the full build was still in progress at this review.
+  completed successfully, including its full build/source packaging; its artifact
+  was not a published release because it ran on main.
 - Alpha56 work: firmware CI run 45316271038 compiled and passed image/source
   checks, then failed at `legal-info` because tests had generated Python bytecode
   inside authored overlay directories, changing prepare's fingerprint. Preparation
