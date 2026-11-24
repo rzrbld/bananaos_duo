@@ -4,6 +4,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import re
 
 root = Path(sys.argv[1])
 mac = (root/'mac.c').read_text()
@@ -15,16 +16,20 @@ wcn = core[core.index('.id = WCN3990_HW_1_0_DEV_VERSION'):]
 wcn = wcn[:wcn.index('\n\t},')]
 assert core.count('.no_pairwise_key_del_ind = true') == 1
 assert '.no_pairwise_key_del_ind = true' in wcn
-source = r'''
+wmi = (root/'wmi.h').read_text()
+mac80211 = (root.parents[4]/'include/net/mac80211.h').read_text()
+constants = '\n'.join(re.search(r'^#define ' + name + r'\s+.+$', wmi, re.M).group(0) for name in ('WMI_KEY_PAIRWISE', 'WMI_KEY_GROUP'))
+pairwise = re.search(r'IEEE80211_KEY_FLAG_PAIRWISE\s*=\s*(BIT\(\d+\))', mac80211).group(1)
+constants += '\n#define IEEE80211_KEY_FLAG_PAIRWISE '+pairwise+'\n'
+source = constants + r'''
 #include <assert.h>
 #include <stdbool.h>
 #include <errno.h>
 #include <stddef.h>
 #define HZ 100
-#define WMI_KEY_PAIRWISE 1
-#define WMI_KEY_GROUP 2
+#define BIT(x) (1U << (x))
 #define lockdep_assert_held(x) ((void)0)
-struct ieee80211_key_conf { int unused; };
+struct ieee80211_key_conf { unsigned flags; };
 enum set_key_cmd { SET_KEY, DISABLE_KEY };
 struct ath10k { int conf_mutex, install_key_done; struct { bool no_pairwise_key_del_ind; } hw_params; };
 struct ath10k_vif { struct ath10k *ar; bool nohwcrypt; };
@@ -39,7 +44,7 @@ static void check(bool quirk, bool software, enum set_key_cmd cmd, u32 flags,
                   int send_error, int completion, int expected, int expected_sends, int expected_waits) {
     struct ath10k ar = { .hw_params.no_pairwise_key_del_ind = quirk };
     struct ath10k_vif v = { .ar = &ar, .nohwcrypt = software };
-    struct ieee80211_key_conf key = {0};
+    struct ieee80211_key_conf key = { .flags = (flags & WMI_KEY_GROUP) ? 0 : IEEE80211_KEY_FLAG_PAIRWISE };
     sends = waits = 0; send_status = send_error; ack = completion;
     assert(ath10k_install_key(&v, &key, cmd, NULL, flags) == expected);
     assert(sends == expected_sends && waits == expected_waits);
@@ -51,7 +56,6 @@ int main(void) {
     check(true, false, DISABLE_KEY, WMI_KEY_GROUP, 0, 0, -ETIMEDOUT, 1, 1);
     check(false, false, DISABLE_KEY, WMI_KEY_PAIRWISE, 0, 0, -ETIMEDOUT, 1, 1);
     check(true, false, DISABLE_KEY, WMI_KEY_PAIRWISE|WMI_KEY_GROUP, 0, 0, -ETIMEDOUT, 1, 1);
-    check(true, false, DISABLE_KEY, 0, 0, 0, -ETIMEDOUT, 1, 1);
     check(true, false, DISABLE_KEY, WMI_KEY_PAIRWISE, -EIO, 0, -EIO, 1, 0);
     check(true, true, DISABLE_KEY, WMI_KEY_PAIRWISE, 0, 0, 1, 0, 0);
 }

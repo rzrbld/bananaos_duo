@@ -93,7 +93,13 @@ not public deployment configuration.
   sent; new keys, group keys, other hardware and send errors keep their checks.
   The actual C routine passed branch/error regressions. A clean stable-source
   kernel build passed with configuration identical to running Alpha53 and a DTB
-  byte-identical to original Alpha46. Complete Alpha54 validation/install pending.
+  byte-identical to original Alpha46. Complete Alpha54 installed/hash-verified,
+  but controlled handovers still took 3.3–3.8 seconds: the added guard incorrectly
+  tested WMI_KEY_PAIRWISE as a bit, although its real value is zero. Alpha55
+  instead checks mac80211's actual pairwise-key flag and keeps the WMI group
+  exclusion. The regression now imports flag definitions from the real kernel
+  headers rather than synthetic constants. Corrected kernel build/test passed;
+  controlled Alpha55 installation and handover verification are pending.
   Upstream reference: https://lore.kernel.org/linux-wireless/20260918-ath10k-del-v1-1-53cd7a7d682b@ixit.cz/
 
 - Experimental Venus work is preserved separately on
@@ -189,6 +195,18 @@ not public deployment configuration.
   on Alpha40 passed (about 57 FPS in the measured interval), with temporary saves
   and automatic launcher restoration. The store core exited after installation.
 
+## Next session: user requests (2026-11-24)
+
+- Battery indicator: Slopetanium showed about 69% after roughly three hours of
+  testing/streaming while the OS launcher still appeared almost full. Compare
+  their actual capacity sources and icon scaling before changing calibration.
+- Redraw icons for the newly added consoles in the existing system style.
+  Either use image generation or provide exact asset dimensions, transparency,
+  formats and theme/style references so the user can generate them.
+- Add Steam PC game streaming as an independently installable Slopetanium app.
+  Evaluate a suitable ARM64 client; validate controller input, top touch, audio,
+  aspect ratio and latency without bundling user authentication into releases.
+
 ## Outstanding checks and boundaries
 
 - Recheck audible output and physical panel orientation with the user when they
@@ -200,11 +218,9 @@ not public deployment configuration.
   PA ordering and the working headset/built-in microphone routes.
 - Keep the quiet fan ceiling and emergency policy; rumble is optional.
 
-Alpha40 component verification is recorded in the local installed-image manifest.
-The fan tachometer read about 4,570 RPM after reboot; its quiet policy is retained.
-Public firmware remains Alpha35 until a separate CI release is published. The
-installed Alpha40 immutable root is unchanged by the independent store update;
-the next nightly seeds v0.3.2-beta for fresh cards.
+Current local/installed versions are listed above. Public firmware remains
+Alpha35 until a separate tagged CI release is published. Main-branch firmware
+CI produces test artifacts; it does not publish a release automatically.
 
 Private local evidence for this work is under `work/duolite/gba-ds-diagnosis/`
 and `work/duolite/local40/`. Earlier verified image manifests and exFAT tests are

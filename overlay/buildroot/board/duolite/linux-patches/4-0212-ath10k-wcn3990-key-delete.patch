@@ -43,7 +43,7 @@ Original Signed-off-by: David Heidelberg <david@ixit.cz>
 +	 * Group removal installs a random replacement key and must still wait,
 +	 * as must every new key installation and other hardware families.
 +	 */
-+	if (cmd == DISABLE_KEY && (flags & WMI_KEY_PAIRWISE) &&
++	if (cmd == DISABLE_KEY && (key->flags & IEEE80211_KEY_FLAG_PAIRWISE) &&
 +	    !(flags & WMI_KEY_GROUP) && ar->hw_params.no_pairwise_key_del_ind)
 +		return 0;
  
