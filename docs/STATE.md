@@ -10,7 +10,7 @@ Stable project rules live in [AGENTS.md](../AGENTS.md), not in this snapshot.
 | --- | --- |
 | Public firmware release | `v0.1.0-alpha.35`; later local development versions are not public OTA releases yet |
 | Current local firmware | `0.1.0-alpha.56`; corrected battery/status artwork and seven console icons over the verified Alpha55 base; experimental Venus remains separate |
-| Development handheld | Alpha56 installed in slot B; active kernel, DTB and complete root hashes verified; kernel/DTB unchanged from verified Alpha55, DTB identical to Alpha46 |
+| Development handheld | Verified Alpha56 remains in slot B. Experimental local Alpha57 was written to slot A but showed black screen and did not reconnect; recovery to B is pending. Kernel/DTB were copied unchanged; active Alpha57 hashes could not be checked |
 | Slopetanium | Public `v0.3.2-beta`; writable app independently updated from CI and all 34 packaged files verified; next nightly seed pin updated in `sources.json` |
 | GBA DS Duo | Fork PR [#1](https://github.com/rzrbld/gba-ds/pull/1) merged; [v1.6.1.1](https://github.com/rzrbld/gba-ds/releases/tag/v1.6.1.1) published by CI and installed through Slopetanium; all 23 payload files matched the release ZIP |
 
@@ -20,6 +20,21 @@ repository. Paths and private device connection details belong to the workspace,
 not public deployment configuration.
 
 ## Recent verified findings
+
+- Steam Link's physical A button acts as Xbox B/Back with the positional mapping;
+  the user distinguished that normal exit from the streaming crash. The native
+  Raspberry Pi Wayland player opens Pi DMA heaps absent from this kernel, then
+  dereferences null during cleanup (observed code trace 0x2d53e0 / 0x2d5cb8).
+  Supported no-hardware/GLES options did not bypass it. X11 avoided the fatal
+  crash but returned to the client menu because GLX is unavailable.
+- A GLX/glamor-capable ARM64 Xwayland build completed in the LOCAL Steam Link
+  integration. Native Mesa X11 GLX/Turnip WSI support was compiled at the same
+  pinned driver version. Complete Alpha57 image/source checks and 44-ELF native
+  dependency closure passed, but its first hardware boot showed black screen and
+  no SSH reconnection. This is a FAILED candidate, not a usable firmware or a
+  proven streaming fix. Alpha56 remains intact in slot B; user recovery requested.
+  Commit dbbca8b restores the verified Alpha56 default and version for nightly
+  builds. The optional desktop graphics recipe remains disabled for investigation.
 
 - CI run 45392642107 exposed an incorrect relative path in the new battery
   regression invocation; commit 76fbe55 corrects it, and the exact command passed
