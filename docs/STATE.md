@@ -1,6 +1,6 @@
 # Development handoff
 
-Last reviewed: **2026-11-23**. This file records a dated snapshot; check GitHub,
+Last reviewed: **2026-11-24**. This file records a dated snapshot; check GitHub,
 the device and local manifests before assuming a build is installed or published.
 Stable project rules live in [AGENTS.md](../AGENTS.md), not in this snapshot.
 
@@ -9,8 +9,8 @@ Stable project rules live in [AGENTS.md](../AGENTS.md), not in this snapshot.
 | Item | Verified state |
 | --- | --- |
 | Public firmware release | `v0.1.0-alpha.35`; later local development versions are not public OTA releases yet |
-| Current local firmware | `0.1.0-alpha.45`, complete local image built and checked; borderless multi-row grid, accent focus and themed edit controls over the original one-row view and verified audio fixes |
-| Development handheld | Alpha45 running in slot B; kernel, DTB and complete immutable root matched the checked local image; gamepad registered, actual edit/normal grid scanouts checked and exact saved layout restored |
+| Current local firmware | `0.1.0-alpha.46`; stable main/nightly source remains separate from the failed Venus experiment |
+| Development handheld | Original complete Alpha46 restored through A/B updating in slot B; historical kernel, DTB and full immutable root hashes verified; no experimental Venus DT node |
 | Slopetanium | Public `v0.3.2-beta`; writable app independently updated from CI and all 34 packaged files verified; next nightly seed pin updated in `sources.json` |
 | GBA DS Duo | Fork PR [#1](https://github.com/rzrbld/gba-ds/pull/1) merged; [v1.6.1.1](https://github.com/rzrbld/gba-ds/releases/tag/v1.6.1.1) published by CI and installed through Slopetanium; all 23 payload files matched the release ZIP |
 
@@ -36,13 +36,33 @@ not public deployment configuration.
   preserving the existing nonblocking writes, refill polling and prefill policy.
 
 - Greenlight is an independent app at `rzrbld/greenlight`, not firmware content.
-  CI published v2.4.2-duo.1; its actual ZIP passed checksum and Slopetanium
-  installation checks. The user installed it and confirmed gamepad and top
-  touch input. Streaming exposed a frozen physical image despite advancing
-  decode counters, increasing shared memory and a graphics-fence wait during
-  cleanup; one attempt also triggered the OOM killer. The app is a bring-up
-  preview and streaming is not yet working reliably. Diagnosis remains in the
-  app workspace; do not describe menu startup as full streaming compatibility.
+  The user confirmed clean, responsive real console streaming on restored
+  Alpha46 with explicit 720p negotiation and ANGLE over native Turnip/Vulkan.
+  They described this as the best streaming result on the handheld so far.
+  The measured H.264 stream was 1280×720 at roughly 60 decoded frames/s;
+  decoding remains explicitly software. GPU composition is accelerated.
+  This does not establish button-to-photon latency or cloud-streaming behavior.
+  App commit `afa7c4a` preserves the tested launcher settings;
+  [Duo.4](https://github.com/rzrbld/greenlight/releases/tag/v2.4.2-duo.4)
+  was built and published by CI. The downloaded ZIP matched the published
+  checksum, passed ARM64/exFAT/native-driver checks and contained no browser
+  profile or credential-store paths. Earlier Duo.3 was installed through Slopetanium and
+  verified against all 598 packaged files, but its CPU composition was choppy.
+  The successful Duo.4 trial used isolated code and an authenticated profile
+  copy. The public CI release was then installed through Slopetanium and all
+  598 packaged files matched its checksums. The successful authenticated profile
+  was reused locally with the previous profile backed up; no profile content
+  was read, printed or published. The installed release has the exact tested
+  launcher flags; a subsequent user stream test is still separate from the trial.
+
+- Experimental Venus work is preserved separately on
+  [`experimental/venus-sm6125`](https://github.com/rzrbld/bananaos_duo/tree/experimental/venus-sm6125).
+  Complete native and VA-API 720p clips produced correct pixels, but streaming
+  showed green/black frames and repeated decode/teardown tests rebooted the
+  device. Alpha52's power-handoff correction did not solve the second-session
+  reset. The user requested rollback; the entire historical Alpha46 payload,
+  including its device tree, was restored and hash-verified. Do not merge the
+  experimental branch into stable/nightly or describe Venus streaming as working.
 
 - Alpha45 removes the multi-row frame and page counter, reuses the themed
   horizontal rail for touch page navigation, enlarges the selected grid icon by
