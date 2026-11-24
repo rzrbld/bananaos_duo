@@ -9,8 +9,8 @@ Stable project rules live in [AGENTS.md](../AGENTS.md), not in this snapshot.
 | Item | Verified state |
 | --- | --- |
 | Public firmware release | `v0.1.0-alpha.35`; later local development versions are not public OTA releases yet |
-| Current local firmware | `0.1.0-alpha.60`; native X11/GLX support, standard DMA heaps and connected-network background scans off by default; experimental Venus remains disabled |
-| Development handheld | Alpha60 running/default in slot B; active kernel, DTB and complete root hashes verified. Verified Alpha59 remains in slot A for recovery; original Alpha46 DTB retained |
+| Current local firmware | `0.1.0-alpha.61`; native X11/GLX support, standard DMA heaps and connected-network background scans off by default; experimental Venus remains disabled |
+| Development handheld | Alpha61 running/default in slot A; active kernel, DTB and complete root hashes verified. Verified Alpha60 remains in slot B for recovery; original Alpha46 DTB retained |
 | Steam Link Duo | LOCAL `0.1.0-alpha.3`, installed as a writable home-menu app; real Steam Deck video/audio/controls confirmed, video latency remains under investigation; no public app repository/release |
 | Slopetanium | Public `v0.3.2-beta`; writable app independently updated from CI and all 34 packaged files verified; next nightly seed pin updated in `sources.json` |
 | GBA DS Duo | Fork PR [#1](https://github.com/rzrbld/gba-ds/pull/1) merged; [v1.6.1.1](https://github.com/rzrbld/gba-ds/releases/tag/v1.6.1.1) published by CI and installed through Slopetanium; all 23 payload files matched the release ZIP |
@@ -21,6 +21,21 @@ repository. Paths and private device connection details belong to the workspace,
 not public deployment configuration.
 
 ## Recent verified findings
+
+- Alpha61 fixes a proven video-buffer capacity/fragmentation failure. The 32 MiB
+  CMA pool repeatedly rejected 376-page allocations despite free general RAM.
+  The kernel now reserves 128 MiB, with the same device tree, radio scan policy,
+  drivers and audio routing. The installed complete image hashes matched; a
+  real 64 MiB DMA allocation/mmap/cache-sync test passed. During the subsequent
+  real stream, 129 sampled audio progress intervals had no stationary pointer
+  and the kernel logged zero CMA allocation failures. The user confirmed sound
+  stayed on and video jitter/warnings were noticeably better. The stream ended
+  normally (client exit 0). This does not establish zero end-to-end latency.
+- A movement-sensitive red network warning remains. The user reports both
+  endpoints are on the same AP and suspects Steam reacts more strongly than
+  Xbox streaming. Reported signal/rate vary; the latest frame-allocation fix
+  must not be confused with a proven RF/protocol diagnosis. Further controlled
+  link/stream comparisons are still separate work.
 
 - Alpha60 was installed through the normal inactive-slot updater. The active
   kernel, device tree and complete SquashFS bytes match its local image; the
@@ -283,8 +298,9 @@ Current local/installed versions are listed above. Public firmware remains
 Alpha35 until a separate tagged CI release is published. Main-branch firmware
 CI produces test artifacts; it does not publish a release automatically.
 
-Latest private firmware evidence is under `work/duolite/local60/`, with the
-verified DMA-heap bring-up under `work/duolite/local59/`. Steam runtime/radio
+Latest private firmware evidence is under `work/duolite/local61/`, with the
+scan-policy checks under `work/duolite/local60/` and initial heap bring-up under
+`work/duolite/local59/`. Steam runtime/radio
 evidence is under `work/steamlink-reference/`. Earlier roaming tests remain in
 `work/duolite/local55/`. No device logs, credentials or pairing are committed.
 

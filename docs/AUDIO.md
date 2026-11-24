@@ -103,3 +103,18 @@ frames, with temporary save paths and automatic launcher restoration. Later
 five-second intervals ran at 60 FPS with no game-reported underruns; the initial
 interval reported one. The user subsequently confirmed that audio sounded okay
 on installed Alpha42, completing the listening check for this GBA DS issue.
+
+## Native streaming and CMA pressure
+
+The Steam Link client on Alpha60 played initially, then its ALSA PCM remained
+RUNNING with a stationary hardware pointer and a full 1,920-frame queue. At the
+same time, kernel diagnostics repeatedly rejected contiguous video-frame
+allocations from the 32 MiB CMA pool. These are separate observations; initial
+sound alone did not establish sustained playback.
+
+Alpha61 enlarged that pool to 128 MiB without changing codec routes, PA ordering
+or SDL audio code. A real streaming retest had no CMA allocation failures and
+129 sampled hardware-pointer intervals progressed at roughly 48 kHz without a
+stationary interval. The user confirmed sound stayed on and video jitter was
+noticeably better. Future audio regressions still require playback-pointer and
+listening checks; do not infer silence or clock health from connection alone.
