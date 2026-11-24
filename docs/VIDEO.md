@@ -52,7 +52,23 @@ pinned and hashed in its Buildroot recipe. It includes libva and vainfo and
 reconfigures FFmpeg with VA-API support. A small package patch supplies stable
 V4L2 UAPI constants absent from the SDK's Linux 5.4 headers; the running target
 kernel remains Linux 7.3.5. Runtime capability/control checks remain in place.
-The backend is OS-owned; Greenlight and its user profile remain independently
+The backend is OS-owned and opt-in: clients explicitly set
+`LIBVA_DRIVER_NAME=venus`; no automatic MSM alias is installed. Greenlight and
+its user profile remain independently
 installed apps. It does not make acceleration a verified fact: the pending
 combined test must show actual Venus decoding and Turnip/Vulkan composition.
 HEVC's experimental opt-in remains disabled.
+
+The VA-API 1.22 compatibility entry point is required by Electron42's bundled
+libva. The adapter's constrained-baseline low-delay patch emits a zero-reorder
+VUI and selects decode-order output only for that profile. Offline reconstructed
+headers and a complete hardware VA-API run both retained all 480 reference
+frame hashes. This fixes the observed first-frame wait in that specific test,
+but an early-stop/second-context run still reset the handheld.
+
+Alpha52 corrects `videocc-sm6125` to use `HW_CTRL_TRIGGER`, matching the current
+Venus `dev_pm_genpd_set_hwmode` sequencing contract. The prior `HW_CTRL` flag
+did not install the genpd hardware-mode callback and forced legacy wrapper
+register handling. A successful handoff emits a single diagnostic. A reset fix
+must be verified with repeated start/stop/power-idle tests before any further
+streaming claim. Green/black streaming frames also require a physical retest.

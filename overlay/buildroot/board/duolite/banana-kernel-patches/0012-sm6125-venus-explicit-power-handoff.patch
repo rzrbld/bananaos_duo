@@ -1,0 +1,33 @@
+From: BananaOS Duo Lite maintainers
+Subject: [PATCH] clk: sm6125: let Venus control the vcodec hardware trigger
+
+The HFI v4 Venus driver explicitly switches the generic power domain between
+software and hardware control while sequencing codec clocks. HW_CTRL instead
+hands control to hardware automatically and does not install set_hwmode_dev,
+causing the driver to fall back to legacy wrapper-register control. Match the
+HW_CTRL_TRIGGER contract used by the same-generation SC7180 driver, and log
+successful generic handoff once for hardware validation. Reset fix pending
+on-device validation; this is not a claim of resolved streaming stability.
+
+--- a/drivers/clk/qcom/videocc-sm6125.c
++++ b/drivers/clk/qcom/videocc-sm6125.c
+@@ -257,7 +257,7 @@
+ 	.pd = {
+ 		.name = "vcodec0_gdsc",
+ 	},
+-	.flags = HW_CTRL,
++	.flags = HW_CTRL_TRIGGER,
+ 	.pwrsts = PWRSTS_OFF_ON,
+ };
+ 
+--- a/drivers/media/platform/qcom/venus/pm_helpers.c
++++ b/drivers/media/platform/qcom/venus/pm_helpers.c
+@@ -561,6 +561,8 @@
+ 	}
+ 
+ 	core->hwmode_dev = true;
++	if (!ret)
++		dev_info_once(core->dev, "vcodec power handoff uses genpd hwmode\n");
+ 	return ret;
+ 
+ legacy:

@@ -1,0 +1,73 @@
+From: BananaOS Duo Lite maintainers
+Subject: [PATCH] Preserve the constrained-baseline H264 low-delay contract
+
+A reconstructed SPS without VUI restrictions can make a stateful decoder
+buffer pictures that a VA-API client is synchronously waiting to read.
+Constrained-baseline H264 cannot contain B pictures, so declare zero reorder
+frames and select Venus decode-order output for that profile. Leave Main/High
+reordering unchanged. Existing HEVC control handling remains unchanged.
+
+--- a/src/h264_annexb.c
++++ b/src/h264_annexb.c
+@@ -160,8 +160,28 @@
+     venus_bits_write(&bits, 1, 1);
+     venus_bits_write(
+         &bits, picture->seq_fields.bits.direct_8x8_inference_flag, 1);
+-    venus_bits_write(&bits, 0, 1);
+-    venus_bits_write(&bits, 0, 1);
++    venus_bits_write(&bits, 0, 1); /* frame_cropping_flag */
++    venus_bits_write(&bits, profile_value == 66, 1); /* vui_parameters_present_flag */
++    if (profile_value == 66) {
++        /* Constrained baseline has no B-frame reordering. Preserve that
++         * low-delay contract when reconstructing SPS for a stateful VPU. */
++        venus_bits_write(&bits, 0, 1); /* aspect_ratio_info_present_flag */
++        venus_bits_write(&bits, 0, 1); /* overscan_info_present_flag */
++        venus_bits_write(&bits, 0, 1); /* video_signal_type_present_flag */
++        venus_bits_write(&bits, 0, 1); /* chroma_loc_info_present_flag */
++        venus_bits_write(&bits, 0, 1); /* timing_info_present_flag */
++        venus_bits_write(&bits, 0, 1); /* nal_hrd_parameters_present_flag */
++        venus_bits_write(&bits, 0, 1); /* vcl_hrd_parameters_present_flag */
++        venus_bits_write(&bits, 0, 1); /* pic_struct_present_flag */
++        venus_bits_write(&bits, 1, 1); /* bitstream_restriction_flag */
++        venus_bits_write(&bits, 1, 1); /* motion_vectors_over_pic_boundaries_flag */
++        venus_bits_write_ue(&bits, 2); /* max_bytes_per_pic_denom */
++        venus_bits_write_ue(&bits, 1); /* max_bits_per_mb_denom */
++        venus_bits_write_ue(&bits, 16); /* log2_max_mv_length_horizontal */
++        venus_bits_write_ue(&bits, 16); /* log2_max_mv_length_vertical */
++        venus_bits_write_ue(&bits, 0); /* max_num_reorder_frames */
++        venus_bits_write_ue(&bits, picture->num_ref_frames ? picture->num_ref_frames : 1);
++    }
+     venus_bits_finish_rbsp(&bits);
+ 
+     if (!venus_bits_ok(&bits))
+--- a/src/v4l2_decoder.h
++++ b/src/v4l2_decoder.h
+@@ -12,6 +12,7 @@
+ 
+ /* Stateful decode uses coded OUTPUT and linear YUV CAPTURE buffers. */
+ struct venus_v4l2_decoder_config {
++    bool low_delay;
+     const char *device;
+     uint32_t coded_format;
+     uint32_t raw_format;
+--- a/src/v4l2_decoder.c
++++ b/src/v4l2_decoder.c
+@@ -392,7 +392,7 @@
+     if (status < 0)
+         goto fail;
+ 
+-    if (decoder->coded_format == V4L2_PIX_FMT_HEVC) {
++    if (decoder->coded_format == V4L2_PIX_FMT_HEVC || config->low_delay) {
+         struct v4l2_control delay = {
+             .id = V4L2_CID_MPEG_VIDEO_DEC_DISPLAY_DELAY,
+             .value = 0,
+--- a/src/decode.c
++++ b/src/decode.c
+@@ -160,6 +160,7 @@
+ 
+     if (config->entrypoint == VAEntrypointVLD) {
+         decoder_config = (struct venus_v4l2_decoder_config) {
++        .low_delay = config->profile == VAProfileH264ConstrainedBaseline,
+             .device = backend->capabilities.decoder_path,
+             .coded_format =
+                 config->profile == VAProfileVP8Version0_3

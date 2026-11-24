@@ -1,0 +1,26 @@
+From: BananaOS Duo Lite maintainers
+Subject: [PATCH] Export the compatible VA 1.22 driver entry point
+
+Electron 42 ships libva 2.22, while the firmware builds with libva 2.23.
+The 2.22/2.23 va_backend.h context and vtable declarations are identical
+(the only difference is an Android enum deprecation annotation). Export
+both entry points and report the older API to the older loader.
+
+--- a/src/driver.c
++++ b/src/driver.c
+@@ -55,3 +55,15 @@
+ {
+     return venus_driver_init(context);
+ }
++
++/* libva 2.22 (VA 1.22) and 2.23 have the same driver context/vtable ABI.
++ * Electron 42 bundles 2.22 and cannot discover a 1.23-only entry point. */
++#if VA_MAJOR_VERSION == 1 && VA_MINOR_VERSION > 22
++VENUS_PUBLIC VAStatus __vaDriverInit_1_22(VADriverContextP context)
++{
++    VAStatus status = venus_driver_init(context);
++    if (status == VA_STATUS_SUCCESS)
++        context->version_minor = 22;
++    return status;
++}
++#endif

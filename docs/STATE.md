@@ -9,7 +9,7 @@ Stable project rules live in [AGENTS.md](../AGENTS.md), not in this snapshot.
 | Item | Verified state |
 | --- | --- |
 | Public firmware release | `v0.1.0-alpha.35`; later local development versions are not public OTA releases yet |
-| Current local firmware | Alpha46 active/recovered; Alpha48 inactive image checked; Alpha49 combines baseline bus policy with the Venus VA-API backend for testing |
+| Current local firmware | Alpha49 installed/hash-verified; Alpha52 kernel power-handoff correction building; acceleration remains experimental |
 | Development handheld | Alpha45 running in slot B; kernel, DTB and complete immutable root matched the checked local image; gamepad registered, actual edit/normal grid scanouts checked and exact saved layout restored |
 | Slopetanium | Public `v0.3.2-beta`; writable app independently updated from CI and all 34 packaged files verified; next nightly seed pin updated in `sources.json` |
 | GBA DS Duo | Fork PR [#1](https://github.com/rzrbld/gba-ds/pull/1) merged; [v1.6.1.1](https://github.com/rzrbld/gba-ds/releases/tag/v1.6.1.1) published by CI and installed through Slopetanium; all 23 payload files matched the release ZIP |
@@ -47,21 +47,39 @@ not public deployment configuration.
   Frame-arrival to browser-presentation estimates were about 32–33 ms; these
   are not measurements of button-to-photon latency.
 
-- The [Venus 5.4 VPU bring-up](VIDEO.md) registered `/dev/video0` and
-  `/dev/video1` on Alpha47 and completed 180 local 720p60 H.264 frames at about
-  113 fps through explicit `h264_v4l2m2m`, exit 0. The complete active kernel,
-  DTB and root matched the built Alpha47 image. A second test coincided with an
-  unexpected restart, and the user reported sluggish UI. No pstore crash record
-  was available. The normal A/B switch restored unchanged Alpha46 in slot A.
-  Alpha48 removes the experimental global interconnect driver and its Venus
-  paths: CPU/GPU/display lack corresponding bandwidth consumers, so changing
-  the shared bus votes is unsafe. The precise reset cause is not yet proven.
-  Signed firmware staging tests pass; repeat decoder/power stability and
-  Electron hardware decode are still pending. Never advertise Alpha47 as stable.
-  The user confirmed Alpha46 restored normal responsiveness. Alpha48 built and
-  passed image checks, then installed into the inactive slot without booting;
-  Alpha46 remains selected while Alpha49 adds the pinned Venus VA-API backend
-  for the requested combined Venus decode + Turnip/Vulkan test.
+- [Venus 5.4 bring-up](VIDEO.md): Alpha49 is installed and its kernel, DTB and
+  complete root match the checked image. The user confirmed normal launcher
+  responsiveness after the experimental interconnect driver was removed.
+  Direct `h264_v4l2m2m` decoded the complete generated 720p60 clip at about
+  148 fps; all 480 frame hashes matched the software reference. The kernel
+  decoder has therefore produced correct pixels, separately from streaming.
+  The device-signed Android firmware is staged read-only into RAM at boot.
+
+- The VA-API bridge needed a VA 1.22 entry point for Electron's bundled libva;
+  native firmware libva is 1.23. With that compatibility fix, actual 720p
+  H.264 streaming reached Venus at roughly 60 decoded frames/s, but the user
+  saw green/black frames. Other renderer/backend tests froze or restarted the
+  device. The upstream adapter discarded the baseline no-reordering VUI and
+  enabled zero display delay only for HEVC. A constrained-baseline-specific
+  fix preserved all 480 pixels/frame hashes in an offline header-reconstruction
+  test and in a complete on-device VA-API hardware decode, which then exited
+  normally. A subsequent early-stop/second-context test still rebooted.
+
+- Alpha52 is building a kernel correction: the added video clock driver used
+  `HW_CTRL`, while Venus's modern genpd handoff requires `HW_CTRL_TRIGGER`
+  (as used by SC7180). A once-per-boot diagnostic will confirm the generic
+  handoff path. Reset resolution is **not verified**. No more device decode
+  tests run on Alpha49 pending this correction. The experimental VA-API backend
+  is opt-in in the new source; MSM auto-selection aliases have been removed.
+  Public OTA is unchanged; do not advertise accelerated streaming as stable.
+
+- Greenlight fork commit `eb71ce1` adapts upstream resolution PR #1752 and
+  defaults Duo to 720p, with separate 1080p/1440p/Auto and bitrate controls.
+  Protocol and gamepad tests, the actual app build and ARM64 packaging passed.
+  An isolated private payload received 1280×720 H.264 rather than the earlier
+  2560×1440. Installed app code/profile were not replaced; no new public app
+  release has been tagged. The user confirmed improved response, with remaining
+  corruption in the accelerated rendering experiment.
 
 - Alpha45 removes the multi-row frame and page counter, reuses the themed
   horizontal rail for touch page navigation, enlarges the selected grid icon by

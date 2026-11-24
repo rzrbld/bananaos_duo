@@ -5,14 +5,13 @@ VENUS_VAAPI_LICENSE_FILES = LICENSE
 VENUS_VAAPI_DEPENDENCIES = host-pkgconf libva libdrm
 VENUS_VAAPI_CONF_OPTS = -Dprobe_limit=8
 
-# Buildroot's libva searches /usr/lib/va; Electron's bundled libva may use
-# /usr/lib/dri. Both resolve to the same OS-owned backend. MSM is the DRM
-# driver name, not a second implementation.
+# Keep the experimental backend opt-in. Buildroot libva searches /usr/lib/va,
+# while Electron's bundled libva uses /usr/lib/dri. Do not register an MSM
+# auto-selection alias until streaming correctness and teardown are validated.
 define VENUS_VAAPI_DRIVER_ALIASES
 	mkdir -p $(TARGET_DIR)/usr/lib/va
 	ln -sf ../dri/venus_drv_video.so $(TARGET_DIR)/usr/lib/va/venus_drv_video.so
-	ln -sf ../dri/venus_drv_video.so $(TARGET_DIR)/usr/lib/va/msm_drv_video.so
-	ln -sf venus_drv_video.so $(TARGET_DIR)/usr/lib/dri/msm_drv_video.so
+	rm -f $(TARGET_DIR)/usr/lib/va/msm_drv_video.so $(TARGET_DIR)/usr/lib/dri/msm_drv_video.so
 endef
 VENUS_VAAPI_POST_INSTALL_TARGET_HOOKS += VENUS_VAAPI_DRIVER_ALIASES
 
