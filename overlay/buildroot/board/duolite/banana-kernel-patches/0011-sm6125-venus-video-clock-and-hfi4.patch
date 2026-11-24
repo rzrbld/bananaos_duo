@@ -484,7 +484,7 @@ this kernel's 64-bit address/size cells. Board enablement remains separate.
  #include <dt-bindings/dma/qcom-gpi.h>
  #include <dt-bindings/gpio/gpio.h>
  #include <dt-bindings/interrupt-controller/arm-gic.h>
-@@ -1453,6 +1454,91 @@
+@@ -1453,6 +1454,85 @@
  
  				status = "disabled";
  			};
@@ -511,12 +511,6 @@ this kernel's 64-bit address/size cells. Board enablement remains separate.
 +
 +			iommus = <&apps_smmu 0x840 0x20>;
 +			memory-region = <&venus_mem>;
-+
-+			interconnects = <&mmnrt_virt MASTER_VIDEO_P0 RPM_ALWAYS_TAG
-+					 &bimc SLAVE_EBI_CH0 RPM_ALWAYS_TAG>,
-+					<&bimc MASTER_AMPSS_M0 RPM_ALWAYS_TAG
-+					 &config_noc SLAVE_VENUS_CFG RPM_ALWAYS_TAG>;
-+			interconnect-names = "video-mem", "cpu-cfg";
 +
 +			status = "disabled";
 +
