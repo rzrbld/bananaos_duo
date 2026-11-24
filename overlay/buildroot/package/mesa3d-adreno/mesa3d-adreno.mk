@@ -8,10 +8,18 @@ MESA3D_ADRENO_PROVIDES = libegl libgles libgbm
 MESA3D_ADRENO_DEPENDENCIES = host-bison host-flex host-python-glslang host-python-mako host-python-packaging host-python-pyyaml libdrm expat zlib vulkan-headers
 MESA3D_ADRENO_CONF_OPTS = \
 	-Dgallium-drivers=freedreno -Dvulkan-drivers=freedreno -Dfreedreno-kmds=msm \
-	-Dplatforms= -Dllvm=disabled -Dglx=disabled -Dglvnd=disabled \
+	-Dllvm=disabled -Dglvnd=disabled \
 	-Degl=enabled -Dgbm=enabled -Dopengl=true -Dgles1=disabled -Dgles2=enabled \
 	-Dgallium-rusticl=false -Dmicrosoft-clc=disabled -Dvideo-codecs= \
 	-Dgallium-va=disabled -Dbuild-tests=false -Dvalgrind=disabled \
 	-Dlibunwind=disabled -Dlmsensors=disabled
+
+ifeq ($(BR2_PACKAGE_MESA3D_ADRENO_DESKTOP),y)
+MESA3D_ADRENO_PROVIDES += libgl
+MESA3D_ADRENO_DEPENDENCIES += xlib_libX11 xlib_libXext xlib_libXdamage xlib_libXfixes xlib_libXrandr xlib_libXxf86vm xlib_libxshmfence xorgproto libxcb
+MESA3D_ADRENO_CONF_OPTS += -Dplatforms=x11 -Dglx=dri -Dglx-direct=true
+else
+MESA3D_ADRENO_CONF_OPTS += -Dplatforms= -Dglx=disabled
+endif
 
 $(eval $(meson-package))

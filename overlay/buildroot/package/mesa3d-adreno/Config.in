@@ -16,6 +16,25 @@ config BR2_PACKAGE_MESA3D_ADRENO
 	select BR2_PACKAGE_LIBGBM_HAS_FEATURE_DMA_BUF
 
 if BR2_PACKAGE_MESA3D_ADRENO
+config BR2_PACKAGE_MESA3D_ADRENO_DESKTOP
+	bool "X11 window-system support"
+	depends on BR2_PACKAGE_XORG7
+	select BR2_PACKAGE_XLIB_LIBX11
+	select BR2_PACKAGE_XLIB_LIBXEXT
+	select BR2_PACKAGE_XLIB_LIBXDAMAGE
+	select BR2_PACKAGE_XLIB_LIBXFIXES
+	select BR2_PACKAGE_XLIB_LIBXRANDR
+	select BR2_PACKAGE_XLIB_LIBXXF86VM
+	select BR2_PACKAGE_XLIB_LIBXSHMFENCE
+	select BR2_PACKAGE_LIBXCB
+	select BR2_PACKAGE_XORGPROTO
+	select BR2_PACKAGE_HAS_LIBGL
+	help
+	  Native Freedreno GLX/EGL and Turnip WSI for independently installed
+	  desktop applications. Does not install an X server or desktop shell.
+
+config BR2_PACKAGE_PROVIDES_LIBGL
+	default "mesa3d-adreno" if BR2_PACKAGE_MESA3D_ADRENO_DESKTOP
 config BR2_PACKAGE_PROVIDES_LIBEGL
 	default "mesa3d-adreno"
 config BR2_PACKAGE_PROVIDES_LIBGLES
