@@ -1,14 +1,19 @@
 --- a/system/rootfs/usr/libexec/banana/wifi
 +++ b/system/rootfs/usr/libexec/banana/wifi
-@@ -38,7 +38,10 @@
+@@ -38,7 +38,15 @@
          return 0
      fi
      # with no known network in reach, scans back off from every 3 s to every 5 min (the radio mostly asleep)
 -    { echo "ctrl_interface=$CTRL"; echo "update_config=0"; echo "autoscan=exponential:3:300"; [ -f $CONF ] && cat $CONF; } > /run/banana/wpa.conf
-+    # Connected networks also need scans: autoscan above only covers disconnection.
-+    # Per-network bgscan overrides remain available in the writable saved profile.
++    # Better-AP background scans are opt-in: off-channel scans can interrupt streams.
++    # Initial connection and disconnected-network discovery keep their normal scans.
 +    { echo "ctrl_interface=$CTRL"; echo "update_config=0"; echo "autoscan=exponential:3:300";
-+      echo 'bgscan="simple:15:-70:1800"'; [ -f $CONF ] && cat $CONF; } > /run/banana/wpa.conf
++      if [ "$(cat /data/banana/wifi-roaming 2>/dev/null)" = on ]; then
++          echo 'bgscan="simple:15:-70:1800"'
++      else
++          echo 'bgscan=""'
++      fi
++      [ -f $CONF ] && cat $CONF; } > /run/banana/wpa.conf
      chmod 600 /run/banana/wpa.conf
      ip link set wlan0 up
      wpa_supplicant -B -i wlan0 -c /run/banana/wpa.conf -P /run/banana/wpa.pid 9>&- || return 1

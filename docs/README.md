@@ -17,6 +17,7 @@ of reconstructing project policy from old chat or bring-up logs.
 | [HOME-MENU.md](HOME-MENU.md) | Home icon editing, row density and optional port shortcuts |
 | [AUDIO.md](AUDIO.md) | Codec routing, microphones, jack changes and pop fixes |
 | [RUMBLE.md](RUMBLE.md) | Optional force feedback and emulator requirements |
+| [WIFI.md](WIFI.md) | Connected-network scan policy, writable opt-in and reconnect behavior |
 | [TOUCH.md](TOUCH.md) | Both touchscreens, startup probing and per-panel coordinates |
 
 [CONTRIBUTING.md](../CONTRIBUTING.md) is the contributor entry point;

@@ -103,7 +103,10 @@ assert b'portmaster-duolite-ui' not in command('unsquashfs', '-l', squash)
 def cat(name):
     return command('unsquashfs','-cat',squash,name)
 assert cat('etc/banana/board').strip() == b'duolite'
-assert b'bgscan="simple:15:-70:1800"' in cat('usr/libexec/banana/wifi')
+assert cat('etc/banana/build') == b'Duo Lite ' + (source/'buildroot/board/duolite/BUILD').read_bytes().strip() + b'\n'
+wifi = cat('usr/libexec/banana/wifi')
+assert b'bgscan="simple:15:-70:1800"' in wifi
+assert b'/data/banana/wifi-roaming' in wifi and b'bgscan=""' in wifi
 import io, zipfile
 with zipfile.ZipFile(io.BytesIO(cat('usr/share/slopetanium/seed.zip'))) as seed:
     assert seed.read('slopetanium/slopetanium-ui.aarch64')[:4] == b'\x7fELF'
